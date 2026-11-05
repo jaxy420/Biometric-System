@@ -10,8 +10,14 @@ require_once "../includes/student-face-references.php";
 ensureStudentFaceReferences($conn);
 ensureSectionCatalogColumns($conn);
 seedDefaultTeacherSections($conn);
+$registrationComplete = ($_GET['registered'] ?? '') === '1' && !empty($_SESSION['student_registration_complete']);
 $toast = $_SESSION["toast"]["message"] ?? null;
-unset($_SESSION["toast"]);
+if ($registrationComplete) {
+    // Keep the success toast for student-list.php after the completion check.
+    unset($_SESSION['student_registration_complete']);
+} else {
+    unset($_SESSION["toast"]);
+}
 // A failed registration returns one recoverable copy of the form. Refreshing
 // the page deliberately starts a clean registration instead of retaining it.
 if (!empty($_SESSION['student_registration_draft_displayed'])) {
@@ -49,7 +55,7 @@ adminSidebar(
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Student profile</p>
         <h2 class="mt-2 text-2xl font-black text-slate-900">Registration details</h2>
         <p class="mt-2 text-slate-500">All fields marked below are required.</p>
-        <form action="save-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">
+        <form id="register-student-form" action="save-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
                 $_SESSION["csrf_token"],
             ) ?>">
@@ -98,14 +104,37 @@ adminSidebar(
                         class="<?= $fieldClass('address') ?>"
                         name="address" value="<?= $old('address') ?>" autocomplete="street-address" maxlength="255" required><?php if (isset($fieldErrors['address'])): ?><p class="mt-2 text-xs font-semibold text-rose-600"><?= htmlspecialchars($fieldErrors['address']) ?></p><?php endif; ?></label></div>
             <?php require "../includes/student-face-fields.php"; ?>
-            <button
+            <button data-register-student-submit
                 class="btn btn-primary w-full">Register
                 student</button>
         </form>
     </section>
 </div>
+<style>
+    #registration-progress { display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; padding:20px; background:rgba(2,6,23,.72); }
+    #registration-progress.is-visible { display:flex; }
+    #registration-progress .registration-modal { width:min(100%,360px); padding:28px; border-radius:20px; text-align:center; background:#fff; box-shadow:0 24px 60px rgba(0,0,0,.38); }
+    #registration-progress .registration-spinner { width:64px; height:64px; margin:auto; border:5px solid #dbeafe; border-top-color:#2563eb; border-radius:999px; animation:student-registration-spin .75s linear infinite; }
+    #registration-progress .registration-check { display:flex; width:64px; height:64px; margin:auto; align-items:center; justify-content:center; border-radius:999px; background:#d1fae5; color:#059669; font-size:38px; font-weight:900; animation:student-registration-check .42s cubic-bezier(.18,.89,.32,1.28) both; }
+    #registration-progress .registration-title { margin:20px 0 0; color:#0f172a; font-size:21px; font-weight:800; line-height:1.25; }
+    #registration-progress .registration-copy { margin:9px 0 0; color:#475569; font-size:14px; line-height:1.5; }
+    #registration-progress .is-hidden { display:none; }
+    @keyframes student-registration-spin { to { transform:rotate(360deg); } }
+    @keyframes student-registration-check { from { opacity:0; transform:scale(.45) rotate(-18deg); } to { opacity:1; transform:scale(1) rotate(0); } }
+    .dark #registration-progress .registration-modal { background:#0f172a; }
+    .dark #registration-progress .registration-title { color:#f8fafc; }
+    .dark #registration-progress .registration-copy { color:#cbd5e1; }
+</style>
+<div id="registration-progress" class="<?= $registrationComplete ? 'is-visible' : '' ?>" role="status" aria-live="polite" aria-modal="true">
+    <div class="registration-modal">
+        <div data-registration-spinner class="registration-spinner<?= $registrationComplete ? ' is-hidden' : '' ?>"></div>
+        <div data-registration-check class="registration-check<?= $registrationComplete ? '' : ' is-hidden' ?>">✓</div>
+        <h3 data-registration-title class="registration-title"><?= $registrationComplete ? 'Student registered' : 'Registering student…' ?></h3>
+        <p data-registration-message class="registration-copy"><?= $registrationComplete ? 'The profile and facial references were saved successfully.' : 'Saving the student profile and uploading facial references. Please keep this page open.' ?></p>
+    </div>
+</div>
 <?php if (
-    $toast
+    $toast && !$registrationComplete
 ): ?><div data-auto-toast
     class="fixed bottom-5 right-5 rounded-xl bg-slate-900 px-5 py-4 font-semibold text-white shadow-xl transition-all duration-300"><?= htmlspecialchars(
     $toast,
@@ -116,6 +145,42 @@ adminSidebar(
         JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT,
     ); ?>;
     const savedStudentDraft = <?= json_encode($draft, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const registrationComplete = <?= $registrationComplete ? 'true' : 'false' ?>;
+    const registrationForm = document.getElementById('register-student-form');
+    const registrationProgress = document.getElementById('registration-progress');
+    const registrationSpinner = registrationProgress?.querySelector('[data-registration-spinner]');
+    const registrationCheck = registrationProgress?.querySelector('[data-registration-check]');
+    const registrationTitle = registrationProgress?.querySelector('[data-registration-title]');
+    const registrationMessage = registrationProgress?.querySelector('[data-registration-message]');
+    const registrationSubmit = registrationForm?.querySelector('[data-register-student-submit]');
+    if (registrationComplete && registrationProgress) {
+        registrationSpinner?.classList.add('is-hidden');
+        registrationCheck?.classList.remove('is-hidden');
+        registrationTitle.textContent = 'Student registered';
+        registrationMessage.textContent = 'The profile and facial references were saved successfully.';
+        window.setTimeout(() => window.location.replace('student-list.php'), 1500);
+    }
+    registrationForm?.addEventListener('submit', event => {
+        // Let the browser paint the modal before beginning the multipart photo
+        // upload. Without this tiny pause, normal navigation can occur before
+        // the spinner ever becomes visible.
+        if (registrationForm.dataset.submitting === 'true') return;
+        event.preventDefault();
+        registrationForm.dataset.submitting = 'true';
+        if (!registrationProgress) return;
+        registrationProgress.classList.add('is-visible');
+        registrationSpinner?.classList.remove('is-hidden');
+        registrationCheck?.classList.add('is-hidden');
+        registrationTitle.textContent = 'Registering student…';
+        registrationMessage.textContent = 'Saving the student profile and uploading facial references. Please keep this page open.';
+        if (registrationSubmit) {
+            registrationSubmit.disabled = true;
+            registrationSubmit.textContent = 'Registering…';
+        }
+        window.requestAnimationFrame(() => {
+            window.setTimeout(() => registrationForm.submit(), 120);
+        });
+    });
     let restoringSavedPlacement = Boolean(savedStudentDraft.grade && savedStudentDraft.student_section);
     const gradeSelect = document.querySelector('[name="grade"]'),
         sectionSelect = document.getElementById('student-section'),

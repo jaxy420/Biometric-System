@@ -18,9 +18,16 @@ KNOWN_FACES_DIR = r"C:\Biometric_Capstone\known_faces"
 MODEL_ROOT = os.path.join(os.path.dirname(__file__), "insightface-models")
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "face_embedding_cache_onnx.pkl")
 CACHE_VERSION = 1
-MATCH_SIMILARITY = 0.46
-RUNNER_UP_MARGIN = 0.045
-MIN_FACE_EDGE = 42
+# Live mobile-camera frames vary much more than enrollment photos.  Keep the
+# acceptance gate conservative: a missed scan may be retried, while a weak
+# look-alike match could create attendance for the wrong student.
+MATCH_SIMILARITY = 0.52
+RUNNER_UP_MARGIN = 0.065
+# Full-body/background false detections are usually tiny. A valid mobile scan
+# is already captured at 960x720, so require a real, well-sized face before an
+# embedding can ever reach the identity matcher.
+MIN_FACE_EDGE = 96
+MIN_DETECTION_SCORE = 0.75
 
 _app = None
 _cached_key = None
@@ -170,7 +177,11 @@ def recognize(image_path, references=None):
     detected, matches, seen = [], [], set()
     for face in faces:
         box = result_box(face)
-        if box["right"] - box["left"] < MIN_FACE_EDGE or box["bottom"] - box["top"] < MIN_FACE_EDGE:
+        if (
+            box["right"] - box["left"] < MIN_FACE_EDGE
+            or box["bottom"] - box["top"] < MIN_FACE_EDGE
+            or float(getattr(face, "det_score", 0.0)) < MIN_DETECTION_SCORE
+        ):
             continue
         detected.append({"box": box})
         candidate = getattr(face, "normed_embedding", None)

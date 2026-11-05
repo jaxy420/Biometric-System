@@ -58,6 +58,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
@@ -97,6 +98,10 @@ import org.json.JSONObject;
 public class MainActivity extends AppCompatActivity {
 
   private static final int CAMERA_PERMISSION = 41;
+  // The server must never receive a frame that only contains a body or a
+  // background object. At the 960x720 capture size, a face below this size is
+  // too small for dependable identity recognition anyway.
+  private static final int MIN_CAPTURED_FACE_EDGE = 100;
   private final ExecutorService networkExecutor =
     Executors.newSingleThreadExecutor();
   private final ExecutorService imageExecutor =
@@ -1146,7 +1151,7 @@ public class MainActivity extends AppCompatActivity {
             @NonNull ImageCapture.OutputFileResults output
           ) {
             cameraCaptureBusy.set(false);
-            uploadFrame(frame);
+            verifyCapturedFaceAndUpload(frame);
           }
 
           @Override
@@ -1159,6 +1164,57 @@ public class MainActivity extends AppCompatActivity {
       );
     } catch (IOException error) {
       cameraCaptureBusy.set(false);
+      captureInFlight.set(false);
+    }
+  }
+
+  /**
+   * The analysis stream and ImageCapture are different frames. A face may have
+   * been visible when capture started but already left the camera by the time
+   * the JPEG is saved. Verify the exact upload image so a body/background can
+   * never be sent for identity matching.
+   */
+  private void verifyCapturedFaceAndUpload(File frame) {
+    try {
+      InputImage captured = InputImage.fromFilePath(this, Uri.fromFile(frame));
+      faceDetector
+        .process(captured)
+        .addOnSuccessListener(faces -> {
+          boolean hasUsableFace = false;
+          for (Face face : faces) {
+            Rect bounds = face.getBoundingBox();
+            if (
+              bounds.width() >= MIN_CAPTURED_FACE_EDGE &&
+              bounds.height() >= MIN_CAPTURED_FACE_EDGE
+            ) {
+              hasUsableFace = true;
+              break;
+            }
+          }
+          if (hasUsableFace && scanning) {
+            // ML Kit completes this listener on the UI thread. Network I/O
+            // must return to the scanner's background executor; otherwise
+            // Android throws NetworkOnMainThreadException and reports the
+            // misleading "Could not reach the school server" message.
+            networkExecutor.execute(() -> uploadFrame(frame));
+            return;
+          }
+          frame.delete();
+          captureInFlight.set(false);
+          if (scanning) {
+            faceVisible.set(false);
+            runOnUiThread(() -> {
+              if (faceGuide != null) faceGuide.setDetected(false);
+              setGuideStatus("Detecting face...", Color.rgb(191, 219, 254));
+            });
+          }
+        })
+        .addOnFailureListener(error -> {
+          frame.delete();
+          captureInFlight.set(false);
+        });
+    } catch (Exception error) {
+      frame.delete();
       captureInFlight.set(false);
     }
   }

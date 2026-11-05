@@ -57,7 +57,24 @@ def validate(path, pose='front', front_path=None):
             return {"valid": True}
         return fail("No clear upright face was found. Use a front-facing photo in good lighting.")
     if len(locations) != 1:
-        return fail("Use a photo with only one person visible.")
+        # A side-angle photo can make the legacy HOG detector report a small
+        # duplicate box around hair, an ear, or a bright background detail.
+        # Keep the front photo strict. For the optional left/right views, use
+        # the clear main face only when every other box is much smaller; two
+        # similarly sized faces still mean that another person is visible.
+        ranked_locations = sorted(
+            locations,
+            key=lambda box: max(0, box[2] - box[0]) * max(0, box[1] - box[3]),
+            reverse=True,
+        )
+        largest_area = max(1, (ranked_locations[0][2] - ranked_locations[0][0]) * (ranked_locations[0][1] - ranked_locations[0][3]))
+        other_faces = [
+            box for box in ranked_locations[1:]
+            if (box[2] - box[0]) * (box[1] - box[3]) >= largest_area * 0.35
+        ]
+        if pose == 'front' or other_faces:
+            return fail("Use a photo with only one person visible.")
+        locations = [ranked_locations[0]]
 
     top, right, bottom, left = locations[0]
     face_width, face_height = right - left, bottom - top

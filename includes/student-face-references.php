@@ -104,6 +104,10 @@ function storeStudentFaceDraftsFromRequest(): void
 /** Existing web photos are preferred; the historical scanner copy is a fallback. */
 function recognitionReferencePath(string $path): ?string
 {
+    // Imported student lists can use this shared UI placeholder as IMAGE_PATH.
+    // It is not a biometric reference and must never be used to identify a
+    // student; otherwise dozens of students end up sharing one embedding.
+    if (strtolower(basename(str_replace('\\', '/', $path))) === 'student-preview.png') return null;
     if (preg_match('#^admin/student-face-image.php\?file=([a-f0-9]{32}\.(?:jpg|png))$#D', $path, $match)) {
         $private = __DIR__ . '/../storage/student-faces/' . $match[1];
         return is_file($private) ? $private : null;

@@ -102,7 +102,8 @@ try {
     clearStudentFaceDrafts();
     unset($_SESSION['student_registration_draft'], $_SESSION['student_registration_errors'], $_SESSION['student_registration_draft_displayed']);
     $_SESSION['toast'] = ['message'=>'Registered successfully', 'type'=>'success'];
-    $redirect = 'student-list.php';
+    $_SESSION['student_registration_complete'] = true;
+    $redirect = 'add-student.php?registered=1';
 } catch (Throwable $error) {
     $conn->rollback();
     foreach ($createdFiles as $file) @unlink($file);

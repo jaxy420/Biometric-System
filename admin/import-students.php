@@ -5,6 +5,8 @@ require "page-guard.php";
 require "components.php";
 $result = $_SESSION["student-import-result"] ?? null;
 unset($_SESSION["student-import-result"]);
+$importComplete = is_array($result) && empty($result['error']);
+$importedCount = (int) ($result['inserted'] ?? 0);
 adminHead("Import students");
 adminSidebar(
     "students",
@@ -119,7 +121,7 @@ adminSidebar(
     <section class="card card-body">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Step 2</p>
         <h3 class="mt-2 text-xl font-black text-slate-900">Upload and import</h3>
-        <form action="import-students-save.php" method="post" enctype="multipart/form-data" class="mt-6 space-y-5">
+        <form id="import-students-form" action="import-students-save.php" method="post" enctype="multipart/form-data" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
           $_SESSION["csrf_token"],
       ) ?>">
@@ -143,11 +145,34 @@ adminSidebar(
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                 <strong>Biometric photo required later:</strong> importing creates student profiles with a placeholder
                 image. Open each profile afterward to upload a unique, clear face photo before using the scanner.</div>
-            <button
+            <button data-import-students-submit
                 class="btn btn-primary w-full">Import
                 students</button>
         </form>
     </section>
+</div>
+<style>
+    #student-import-progress { display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; padding:20px; background:rgba(2,6,23,.72); }
+    #student-import-progress.is-visible { display:flex; }
+    #student-import-progress .import-modal { width:min(100%,360px); padding:28px; border-radius:20px; text-align:center; background:#fff; box-shadow:0 24px 60px rgba(0,0,0,.38); }
+    #student-import-progress .import-spinner { width:64px; height:64px; margin:auto; border:5px solid #dbeafe; border-top-color:#2563eb; border-radius:999px; animation:student-import-spin .75s linear infinite; }
+    #student-import-progress .import-check { display:flex; width:64px; height:64px; margin:auto; align-items:center; justify-content:center; border-radius:999px; background:#d1fae5; color:#059669; font-size:38px; font-weight:900; animation:student-import-check .42s cubic-bezier(.18,.89,.32,1.28) both; }
+    #student-import-progress .import-title { margin:20px 0 0; color:#0f172a; font-size:21px; font-weight:800; line-height:1.25; }
+    #student-import-progress .import-copy { margin:9px 0 0; color:#475569; font-size:14px; line-height:1.5; }
+    #student-import-progress .is-hidden { display:none; }
+    @keyframes student-import-spin { to { transform:rotate(360deg); } }
+    @keyframes student-import-check { from { opacity:0; transform:scale(.45) rotate(-18deg); } to { opacity:1; transform:scale(1) rotate(0); } }
+    .dark #student-import-progress .import-modal { background:#0f172a; }
+    .dark #student-import-progress .import-title { color:#f8fafc; }
+    .dark #student-import-progress .import-copy { color:#cbd5e1; }
+</style>
+<div id="student-import-progress" class="<?= $importComplete ? 'is-visible' : '' ?>" role="status" aria-live="polite" aria-modal="true">
+    <div class="import-modal">
+        <div data-import-spinner class="import-spinner<?= $importComplete ? ' is-hidden' : '' ?>"></div>
+        <div data-import-check class="import-check<?= $importComplete ? '' : ' is-hidden' ?>">✓</div>
+        <h3 data-import-title class="import-title"><?= $importComplete ? 'Import complete' : 'Importing students…' ?></h3>
+        <p data-import-message class="import-copy"><?= $importComplete ? $importedCount . ' student' . ($importedCount === 1 ? '' : 's') . ' imported successfully.' : 'Uploading the spreadsheet and validating student records. Please keep this page open.' ?></p>
+    </div>
 </div>
 <script>
     document.getElementById('student_file').addEventListener('change', event => {
@@ -156,6 +181,36 @@ adminSidebar(
         name.textContent = file ? file.name : 'No file chosen';
         name.className = 'min-w-0 max-w-full truncate text-sm font-semibold ' + (file ? 'text-emerald-600' :
             'text-slate-500')
+    });
+    const importComplete = <?= $importComplete ? 'true' : 'false' ?>;
+    const importForm = document.getElementById('import-students-form');
+    const importProgress = document.getElementById('student-import-progress');
+    const importSpinner = importProgress?.querySelector('[data-import-spinner]');
+    const importCheck = importProgress?.querySelector('[data-import-check]');
+    const importTitle = importProgress?.querySelector('[data-import-title]');
+    const importMessage = importProgress?.querySelector('[data-import-message]');
+    const importSubmit = importForm?.querySelector('[data-import-students-submit]');
+    if (importComplete && importProgress) {
+        importSpinner?.classList.add('is-hidden');
+        importCheck?.classList.remove('is-hidden');
+        window.setTimeout(() => importProgress.classList.remove('is-visible'), 1500);
+    }
+    importForm?.addEventListener('submit', event => {
+        if (importForm.dataset.submitting === 'true') return;
+        event.preventDefault();
+        importForm.dataset.submitting = 'true';
+        importProgress.classList.add('is-visible');
+        importSpinner?.classList.remove('is-hidden');
+        importCheck?.classList.add('is-hidden');
+        importTitle.textContent = 'Importing students…';
+        importMessage.textContent = 'Uploading the spreadsheet and validating student records. Please keep this page open.';
+        if (importSubmit) {
+            importSubmit.disabled = true;
+            importSubmit.textContent = 'Importing…';
+        }
+        window.requestAnimationFrame(() => {
+            window.setTimeout(() => importForm.submit(), 120);
+        });
     });
 </script>
 <?php adminFoot(); ?>

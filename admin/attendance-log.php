@@ -265,6 +265,8 @@ adminSidebar(
         </div></div>
     </div>
 
+</div>
+
     <section id="panel-live" role="tabpanel" aria-labelledby="tab-live" class="mt-6">
         <div class="attendance-log-scroll w-full overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <table id="live-scans-table" class="w-full text-left border-collapse">
@@ -333,7 +335,6 @@ adminSidebar(
         </div>
         <div id="history-pagination"></div>
     </section>
-</div>
 </div>
 <div id="attendance-remark-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="attendance-remark-title">

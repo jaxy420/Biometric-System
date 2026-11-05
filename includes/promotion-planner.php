@@ -2,6 +2,7 @@
 require_once __DIR__ . '/sectioning.php';
 require_once __DIR__ . '/student-promotion-schema.php';
 require_once __DIR__ . '/promotion-policy-schema.php';
+require_once __DIR__ . '/teacher-assignment-audit.php';
 
 function validPromotionSchoolYear(string $year): bool
 {
@@ -85,8 +86,17 @@ function promotionContext(mysqli $conn, string $year, bool $lock = false): array
     $retentionFlags = studentRetentionFlags($conn, $year);
     $sections = $conn->query('SELECT * FROM sections ORDER BY GRADE,STRAND,SORT_ORDER,SECTION_ID'.$suffix)->fetch_all(MYSQLI_ASSOC);
     $honors = $conn->query('SELECT * FROM promotion_honor_sections ORDER BY GRADE,STRAND'.$suffix)->fetch_all(MYSQLI_ASSOC);
+    $teachers = $conn->query('SELECT TEACHER_ID,TEACHER_NAME,TEACHER_STATUS FROM teachers ORDER BY TEACHER_ID'.$suffix)->fetch_all(MYSQLI_ASSOC);
+    $advisoryStmt = $conn->prepare('SELECT TEACHER_ID,SECTION_ID,RELEASED_AT FROM teacher_advisory_assignments WHERE SCHOOL_YEAR=?'.$suffix);
+    $advisoryStmt->bind_param('s',$year); $advisoryStmt->execute(); $advisories = $advisoryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $subjectStmt = $conn->prepare('SELECT TEACHER_ID,GRADE,STRAND,SECTION,SUBJECT FROM teacher_assignments WHERE SCHOOL_YEAR=?'.$suffix);
+    $subjectStmt->bind_param('s',$year); $subjectStmt->execute(); $subjectAssignments = $subjectStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $requiredStmt = $conn->prepare('SELECT GRADE,STRAND,SUBJECT FROM promotion_required_subjects WHERE SCHOOL_YEAR=? ORDER BY GRADE,STRAND,SUBJECT'.$suffix);
+    $requiredStmt->bind_param('s',$year); $requiredStmt->execute(); $required = $requiredStmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $capacity = $conn->query('SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1'.$suffix)->fetch_assoc();
-    return ['year'=>$year,'students'=>$students,'archive_students'=>$archiveStudents,'results'=>$results,'retention_flags'=>$retentionFlags,'sections'=>$sections,'honors'=>$honors,'default'=>(int)($capacity['DEFAULT_CAPACITY'] ?? 40)];
+    return ['year'=>$year,'students'=>$students,'archive_students'=>$archiveStudents,'results'=>$results,'retention_flags'=>$retentionFlags,'sections'=>$sections,'honors'=>$honors,
+        'teachers'=>$teachers,'advisories'=>$advisories,'subject_assignments'=>$subjectAssignments,'required'=>$required,
+        'default'=>(int)($capacity['DEFAULT_CAPACITY'] ?? 40)];
 }
 
 /** Default one-to-one promotion targets. Grade 10 is routed per student. */
@@ -130,7 +140,12 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
     $retentionFlags = is_array($context['retention_flags'] ?? null) ? $context['retention_flags'] : [];
     $plan = ['year'=>$context['year'],'students'=>[],'archives'=>[],'destinations'=>[],'retained_destinations'=>[],'reviews'=>[],
         'summary'=>['promoted'=>0,'honor'=>0,'regular'=>0,'retained'=>0,'remedial'=>0,'graduated'=>0,'transferred'=>0,'dropped'=>0,'incomplete'=>0],
-        'targets'=>$targets,'choices'=>['outcomes'=>$outcomes,'strand_choices'=>$strandChoices],'blocked'=>false];
+        'targets'=>$targets,'choices'=>['outcomes'=>$outcomes,'strand_choices'=>$strandChoices],
+        'assignment_diagnostics'=>teacherAssignmentDiagnostics(
+            $context['teachers'] ?? [], $context['advisories'] ?? [], $context['subject_assignments'] ?? [],
+            $context['sections'] ?? [], $context['students'] ?? [], $context['required'] ?? [],
+        ),
+        'blocked'=>false];
 
     $sectionsByDestination = []; $knownNames = [];
     foreach ($context['sections'] as $section) {
