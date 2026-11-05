@@ -288,7 +288,7 @@ function adminSidebar(string $active, string $title, string $subtitle = '', stri
         <main class="w-full min-w-0 flex-1">
             <?php ui_topbar($crumbs, $subtitle, $actions, 'data-admin-menu'); ?>
 
-            <div class="w-full p-5 lg:p-7">
+            <div data-app-content class="w-full p-5 lg:p-7">
                 <?php if ($toast): ?>
                 <div data-auto-toast
                     class="fixed <?= $toastPositionClass ?> z-50 rounded-lg <?= $toastClass ?> px-5 py-4 font-bold text-white shadow-xl transition-all duration-300"

@@ -434,3 +434,142 @@ html[data-theme="dark"] .theme-option[aria-pressed="true"] {
     color: #bfdbfe;
     box-shadow: 0 0 0 3px rgb(37 99 235 / .16);
 }
+
+/* Responsive portal system -------------------------------------------------
+   The shared shells are designed from the smallest screen upward: phones use
+   an off-canvas navigation and touch-sized controls, tablets receive denser
+   but still breathable gutters, and laptops keep the persistent sidebar. */
+:root {
+    --portal-phone-gutter: 1rem;
+    --portal-tablet-gutter: 1.5rem;
+    --portal-desktop-gutter: 1.75rem;
+}
+
+.app-topbar,
+[data-app-content],
+[data-admin-nav],
+[data-teacher-nav] {
+    min-width: 0;
+}
+
+[data-app-content] {
+    padding: var(--portal-desktop-gutter);
+}
+
+.overflow-x-auto {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+    height: .5rem;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: #94a3b8;
+    background-clip: padding-box;
+}
+
+@media (max-width: 1023px) {
+    [data-admin-nav],
+    [data-teacher-nav] {
+        width: min(19rem, 88vw) !important;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        box-shadow: 18px 0 44px rgb(2 6 23 / .28);
+    }
+
+    [data-app-content] {
+        padding: var(--portal-tablet-gutter);
+    }
+
+    .app-topbar {
+        padding-right: max(1rem, env(safe-area-inset-right));
+        padding-left: max(1rem, env(safe-area-inset-left));
+    }
+
+    .fixed.inset-0.z-50 > :is(.card, form.card, .rounded-2xl) {
+        max-height: min(calc(100dvh - 2rem), 44rem);
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 639px) {
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    .app-topbar {
+        height: auto;
+        min-height: 4rem;
+        gap: .65rem;
+        padding-top: .5rem;
+        padding-bottom: .5rem;
+    }
+
+    .app-topbar nav[aria-label="Breadcrumb"] {
+        overflow: hidden;
+    }
+
+    .app-topbar nav[aria-label="Breadcrumb"] > :not([aria-current="page"]):not([aria-hidden="true"]) {
+        display: none;
+    }
+
+    .app-topbar :is([data-admin-menu], [data-teacher-menu]) {
+        display: inline-grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        flex: 0 0 2.75rem;
+        place-items: center;
+        padding: 0;
+    }
+
+    [data-app-content] {
+        padding: var(--portal-phone-gutter);
+        padding-right: max(var(--portal-phone-gutter), env(safe-area-inset-right));
+        padding-left: max(var(--portal-phone-gutter), env(safe-area-inset-left));
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    :is(.btn, .table-filter-reset):not(.btn-sm) {
+        min-height: 2.75rem;
+    }
+
+    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) {
+        font-size: 16px;
+    }
+
+    .table-filter-bar {
+        gap: .75rem;
+        padding: .875rem;
+    }
+
+    .table-filter-bar :is(input, select, .btn, .table-filter-reset) {
+        width: 100%;
+    }
+
+    .overflow-x-auto > table {
+        min-width: max-content;
+    }
+
+    .overflow-x-auto :is(th, td) {
+        white-space: nowrap;
+    }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    .card-body {
+        padding: 1.25rem;
+    }
+
+    .app-topbar {
+        padding-right: 1.5rem;
+        padding-left: 1.5rem;
+    }
+}

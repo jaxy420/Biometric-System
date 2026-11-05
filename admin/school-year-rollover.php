@@ -296,7 +296,7 @@ if ($plan) {
     <!-- Stepper                                                               -->
     <!-- --------------------------------------------------------------------- -->
     <div id="sticky-sentinel" class="h-px" aria-hidden="true"></div>
-    <div id="sticky-step-nav" class="sticky top-16 z-40 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur-md transition-shadow duration-200 dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div id="sticky-step-nav" class="sticky top-16 z-10 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur-md transition-shadow duration-200 dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
     <nav aria-label="Rollover steps">
         <div class="no-scrollbar flex w-full max-w-full items-center justify-between gap-2 overflow-x-auto sm:gap-4">
             <button type="button" class="step-nav-btn min-w-[10rem] flex-1 text-left sm:min-w-0 sm:text-center" data-target="#step-1"

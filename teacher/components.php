@@ -131,7 +131,7 @@ function teacherShell(string $title, string $actions = ''): void {
     <main class="w-full min-w-0 flex-1">
         <?php ui_topbar($crumbs, $pageDescription, $actions, 'data-teacher-menu'); ?>
 
-        <div class="w-full p-5 lg:p-7">
+        <div data-app-content class="w-full p-5 lg:p-7">
             <?php if ($toast): ?>
             <div data-auto-toast class="fixed bottom-5 right-5 z-50 rounded-lg px-5 py-4 font-bold text-white shadow-xl <?= ($toast['type'] ?? 'success') === 'error' ? 'bg-rose-600' : 'bg-emerald-600' ?>" role="status"><?= htmlspecialchars($toast['message'] ?? '') ?></div>
             <?php endif; ?>
