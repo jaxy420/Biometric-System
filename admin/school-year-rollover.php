@@ -36,6 +36,16 @@ try {
 } catch (mysqli_sql_exception $exception) { $error='Promotion setup is unavailable. Run database/migrate_promotion_policy.php before using rollover.'; }
 catch (RuntimeException $exception) { $error=$exception->getMessage(); }
 $pastRolloverYears=$conn->query('SELECT DISTINCT SCHOOL_YEAR FROM student_school_history ORDER BY SCHOOL_YEAR DESC')->fetch_all(MYSQLI_ASSOC);
+$previousSchoolYear = '';
+if (preg_match('/^(\d{4})-(\d{4})$/', $activeSchoolYear, $schoolYearParts)) {
+    $previousSchoolYear = ((int) $schoolYearParts[1] - 1) . '-' . ((int) $schoolYearParts[2] - 1);
+}
+$todayYear = (int) date('Y');
+$todayMonth = (int) date('n');
+$currentSchoolYear = $todayMonth >= 6
+    ? $todayYear . '-' . ($todayYear + 1)
+    : ($todayYear - 1) . '-' . $todayYear;
+$canUndoRollover = $pastRolloverYears && $activeSchoolYear !== $currentSchoolYear;
 $summary=$plan['summary'] ?? [];
 $scheduleOpen = (string) ($_GET['view'] ?? '') === 'schedule';
 $calendarRangeStart = date('Y-m-d', strtotime('-2 months'));
@@ -79,6 +89,29 @@ $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
     }
     .step-nav-btn[aria-current="step"] .step-nav-description {
         color: rgba(255,255,255,.85);
+    }
+    [data-theme="dark"] #sticky-step-nav {
+        background: rgb(15 23 42 / .95);
+        border-color: #334155;
+    }
+    [data-theme="dark"] .step-nav-btn {
+        background: #1e293b;
+        border-color: #475569;
+        color: #cbd5e1;
+    }
+    [data-theme="dark"] .step-nav-btn:hover {
+        background: #334155;
+        border-color: #64748b;
+    }
+    [data-theme="dark"] .step-nav-btn .step-nav-label {
+        color: #f8fafc;
+    }
+    [data-theme="dark"] .step-nav-btn .step-nav-description {
+        color: #cbd5e1;
+    }
+    [data-theme="dark"] .step-nav-btn[aria-current="step"] {
+        background: var(--maruhat-blue, #1f4f91);
+        border-color: var(--maruhat-blue, #1f4f91);
     }
     .no-scrollbar {
         -ms-overflow-style: none;
@@ -733,20 +766,35 @@ if ($plan) {
                     <input type="checkbox" name="end_school_year_confirmation" value="1" required>
                     The school year has ended and I have reviewed all four steps.
                 </label>
-                <label class="mt-4 block text-sm font-bold">Administrator password
+                <label class="mt-4 block text-sm font-bold">Administrator password to promote students
                     <input type="password" name="current_password" autocomplete="current-password" required class="mt-2 block w-full max-w-sm rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
                 </label>
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
                 <a href="school-year-rollover.php" class="btn btn-secondary">Back to preview</a>
                 <button type="submit" data-run-rollover
                     <?= !$plan ? 'disabled' : '' ?>
                     class="btn btn-danger mt-0 disabled:cursor-not-allowed disabled:opacity-50">
                     Promote &amp; Auto-Section Students
                 </button>
+                <?php if ($pastRolloverYears): ?>
+                <button type="button" id="open-undo-rollover-modal" class="btn btn-secondary mt-0"
+                    <?= $canUndoRollover ? '' : 'disabled aria-disabled="true"' ?>>
+                    Undo rollover
+                </button>
+                <?php endif; ?>
                 <span class="text-xs text-slate-500">Reads the preview fingerprint and commits one transaction.</span>
             </div>
+            <?php if ($pastRolloverYears): ?>
+            <p class="mt-3 text-xs text-slate-500">
+                <?php if ($canUndoRollover): ?>
+                Undo rollover restores the saved placements from the previous school year and returns the active school year to <?= $escape($previousSchoolYear) ?>. Grades and audit history remain preserved.
+                <?php else: ?>
+                Undo rollover is unavailable while <?= $escape($currentSchoolYear) ?> is the current school year.
+                <?php endif; ?>
+            </p>
+            <?php endif; ?>
         </form>
     </div>
     <?php endif; ?>
@@ -777,25 +825,58 @@ if ($plan) {
 </section>
 <?php endif; ?>
 
-<?php if ($pastRolloverYears): ?>
-<section class="card card-body mt-6 w-full flex-1 px-4 sm:px-6 lg:px-8">
-    <details class="card card-body mt-3 w-full">
-        <summary class="cursor-pointer px-6 py-4 text-lg font-bold text-slate-900 dark:text-slate-100">Undo the latest rollover</summary>
-        <p class="mt-3 text-sm text-slate-500">Restores the previous year's saved placements. Grades and audit history
-            remain preserved.</p>
-        <form action="undo-school-year-rollover.php" method="post" class="mt-4 space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
-            <input type="hidden" name="expected_school_year" value="<?= $escape($activeSchoolYear) ?>">
-            <label class="block text-sm font-bold">Administrator password
-                <input type="password" name="current_password" required autocomplete="current-password" class="mt-2 block w-full max-w-sm rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-            </label>
-            <button class="btn btn-secondary">Undo rollover</button>
-        </form>
-    </details>
-</section>
+<?php if ($pastRolloverYears && $canUndoRollover): ?>
+<div id="undo-rollover-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
+    role="dialog" aria-modal="true" aria-labelledby="undo-rollover-title" aria-describedby="undo-rollover-copy">
+    <form id="undo-rollover-form" action="undo-school-year-rollover.php" method="post" class="card w-full max-w-md p-6 shadow-2xl">
+        <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="expected_school_year" value="<?= $escape($activeSchoolYear) ?>">
+        <h2 id="undo-rollover-title" class="text-xl font-black text-slate-900 dark:text-white">Undo rollover?</h2>
+        <p id="undo-rollover-copy" class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Choose the school year to restore. To protect records, rollovers must be undone newest first.</p>
+        <label class="mt-5 block text-sm font-bold text-slate-700 dark:text-slate-200">School year to restore
+            <select name="target_school_year" required class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                <?php foreach ($pastRolloverYears as $pastRolloverYear): $yearOption=(string)$pastRolloverYear['SCHOOL_YEAR']; $isLatestEligible=$yearOption===$previousSchoolYear; ?>
+                <option value="<?= $escape($yearOption) ?>" <?= $isLatestEligible ? 'selected' : 'disabled' ?>><?= $escape($yearOption) ?><?= $isLatestEligible ? ' — available to restore' : ' — undo newer rollovers first' ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <label class="mt-4 block text-sm font-bold text-slate-700 dark:text-slate-200">Administrator password
+            <input type="password" name="current_password" required autocomplete="current-password" class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+        </label>
+        <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200">This restores saved student placements and makes the selected year active again. Grades and audit history stay preserved.</p>
+        <div class="mt-5 flex flex-wrap justify-end gap-3">
+            <button type="button" id="cancel-undo-rollover" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="confirm-undo-rollover" class="btn btn-danger">Undo rollover</button>
+        </div>
+    </form>
+</div>
 <?php endif; ?>
 
 <script>
+    const undoRolloverButton = document.getElementById('open-undo-rollover-modal');
+    const undoRolloverModal = document.getElementById('undo-rollover-modal');
+    const closeUndoRolloverModal = () => {
+        if (!undoRolloverModal) return;
+        undoRolloverModal.classList.replace('flex', 'hidden');
+        undoRolloverButton?.focus();
+    };
+
+    if (undoRolloverButton && undoRolloverModal) {
+        undoRolloverButton.addEventListener('click', () => {
+            undoRolloverModal.classList.replace('hidden', 'flex');
+            undoRolloverModal.querySelector('input[name="current_password"]')?.focus();
+        });
+        document.getElementById('cancel-undo-rollover')?.addEventListener('click', closeUndoRolloverModal);
+        undoRolloverModal.addEventListener('click', event => {
+            if (event.target === undoRolloverModal) closeUndoRolloverModal();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !undoRolloverModal.classList.contains('hidden')) {
+                closeUndoRolloverModal();
+            }
+        });
+    }
+
     const scheduleToggleButton = document.getElementById('toggle-schedule-btn');
     const schedulePanel = document.getElementById('schedule-panel');
 

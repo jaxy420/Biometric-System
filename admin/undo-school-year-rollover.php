@@ -12,6 +12,9 @@ $conn->begin_transaction();
 try {
     $year=$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1 FOR UPDATE')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
     if (!validPromotionSchoolYear($year)) throw new RuntimeException('The active school year is invalid.');
+    $calendarYear=(int)date('Y'); $calendarMonth=(int)date('n');
+    $currentSchoolYear=$calendarMonth>=6 ? $calendarYear.'-'.($calendarYear+1) : ($calendarYear-1).'-'.$calendarYear;
+    if ($year===$currentSchoolYear) throw new RuntimeException('The active school year is still current and cannot be undone.');
     if (isset($_POST['expected_school_year']) && $_POST['expected_school_year']!==$year) throw new RuntimeException('The school year changed. Refresh before undoing.');
     $parts=explode('-',$year); $previous=((int)$parts[0]-1).'-'.((int)$parts[1]-1);
     $target=(string)($_POST['target_school_year'] ?? $previous);

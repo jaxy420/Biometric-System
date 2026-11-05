@@ -395,9 +395,31 @@ function adminFoot(): void { ?>
             window.__adminScanNotificationsStarted = true;
             let latestScanEventKey = null;
             let scanNotificationsReady = false;
+            const scanNotificationStorageKey = 'biometric-last-attendance-notification';
+            const activeScanToastStorageKey = 'biometric-active-attendance-toast';
+            const lastNotifiedEvent = () => {
+                try { return sessionStorage.getItem(scanNotificationStorageKey) || ''; }
+                catch (_) { return ''; }
+            };
+            const rememberNotifiedEvent = eventKey => {
+                try { sessionStorage.setItem(scanNotificationStorageKey, eventKey); }
+                catch (_) { /* Browser storage is optional. */ }
+            };
+            const clearActiveScanToast = () => {
+                try { sessionStorage.removeItem(activeScanToastStorageKey); }
+                catch (_) { /* Browser storage is optional. */ }
+            };
 
-            const showAttendanceSuccessToast = scan => {
+            const showAttendanceSuccessToast = (scan, lifetime = 8000, saveForNextPage = true) => {
                 document.querySelector('[data-attendance-success-toast]')?.remove();
+                if (saveForNextPage) {
+                    try {
+                        sessionStorage.setItem(activeScanToastStorageKey, JSON.stringify({
+                            scan,
+                            expiresAt: Date.now() + lifetime
+                        }));
+                    } catch (_) { /* Browser storage is optional. */ }
+                }
                 const toast = document.createElement('div');
                 toast.dataset.attendanceSuccessToast = 'true';
                 toast.className = 'fixed left-1/2 top-5 z-[60] flex max-w-[calc(100vw-2.5rem)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3 text-white shadow-2xl ring-1 ring-emerald-200/70 transition-all duration-300';
@@ -437,9 +459,24 @@ function adminFoot(): void { ?>
 
                 setTimeout(() => {
                     toast.classList.add('translate-y-3', 'opacity-0');
-                    setTimeout(() => toast.remove(), 300);
-                }, 4500);
+                    setTimeout(() => {
+                        toast.remove();
+                        clearActiveScanToast();
+                    }, 300);
+                }, lifetime);
             };
+
+            // Keep a currently visible scan toast when the administrator
+            // navigates from Dashboard to Students, Settings, and other pages.
+            try {
+                const activeToast = JSON.parse(sessionStorage.getItem(activeScanToastStorageKey) || 'null');
+                const remaining = Number(activeToast?.expiresAt || 0) - Date.now();
+                if (activeToast?.scan && remaining > 0) {
+                    showAttendanceSuccessToast(activeToast.scan, remaining, false);
+                } else if (activeToast) {
+                    clearActiveScanToast();
+                }
+            } catch (_) { clearActiveScanToast(); }
 
             const pollAttendanceNotification = () => {
                 fetch('get-scan-notification.php', { cache: 'no-store' })
@@ -447,8 +484,11 @@ function adminFoot(): void { ?>
                     .then(data => {
                         const scan = data?.latestScan;
                         const nextKey = scan?.eventKey || null;
-                        if (scanNotificationsReady && scan && nextKey && nextKey !== latestScanEventKey) {
+                        const newlyObserved = scanNotificationsReady && nextKey !== latestScanEventKey;
+                        const recentlyMissedOnLoad = !scanNotificationsReady && scan?.isRecent && nextKey !== lastNotifiedEvent();
+                        if (scan && nextKey && (newlyObserved || recentlyMissedOnLoad)) {
                             showAttendanceSuccessToast(scan);
+                            rememberNotifiedEvent(nextKey);
                         }
                         latestScanEventKey = nextKey;
                         scanNotificationsReady = true;

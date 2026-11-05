@@ -11,17 +11,19 @@ try:
 except ImportError:
     cv2 = None
 
-MIN_IMAGE_EDGE = 480
-MIN_FACE_EDGE = 100
-MIN_SHARPNESS = 35.0
+MIN_IMAGE_EDGE = 320
+MIN_FACE_EDGE = 72
+MIN_SHARPNESS = 16.0
 # Quality gates are conservative enrollment defaults, not measured accuracy claims.
-MIN_FACE_BRIGHTNESS = 40.0
-MAX_FACE_BRIGHTNESS = 220.0
-MIN_FACE_CONTRAST = 18.0
-MAX_EYE_ROLL = 0.30
-FRONT_NOSE_RANGE = (0.35, 0.65)
-POSE_NOSE_RANGES = {'front': FRONT_NOSE_RANGE, 'left': (0.58, 0.88), 'right': (0.12, 0.42)}
-MAX_REFERENCE_IDENTITY_DISTANCE = 0.60
+MIN_FACE_BRIGHTNESS = 25.0
+MAX_FACE_BRIGHTNESS = 235.0
+MIN_FACE_CONTRAST = 12.0
+MAX_EYE_ROLL = 0.45
+# Enrollment photos can be taken on different phone cameras and with a natural
+# slight turn. These are quality hints, not reasons to reject a usable face.
+FRONT_NOSE_RANGE = (0.25, 0.75)
+POSE_NOSE_RANGES = {'front': FRONT_NOSE_RANGE, 'left': (0.40, 0.96), 'right': (0.04, 0.60)}
+MAX_REFERENCE_IDENTITY_DISTANCE = 0.66
 
 def fail(message):
     return {"valid": False, "message": message}
@@ -47,6 +49,12 @@ def validate(path, pose='front', front_path=None):
         return fail("Use a clear photo that is at least 480 pixels wide and 480 pixels high.")
     locations = face_recognition.face_locations(frame, number_of_times_to_upsample=1, model="hog")
     if len(locations) == 0:
+        # Side-view references are optional. The legacy HOG detector can miss
+        # a clear angled phone photo that the deployed ONNX matcher accepts.
+        # Keep the front photo strict, but do not block enrollment solely for
+        # that legacy detector limitation on an optional left/right view.
+        if pose in ('left', 'right'):
+            return {"valid": True}
         return fail("No clear upright face was found. Use a front-facing photo in good lighting.")
     if len(locations) != 1:
         return fail("Use a photo with only one person visible.")
@@ -55,7 +63,7 @@ def validate(path, pose='front', front_path=None):
     face_width, face_height = right - left, bottom - top
     if min(face_width, face_height) < MIN_FACE_EDGE:
         return fail("Move closer or use a higher-quality photo so the face is clear.")
-    margin_x, margin_y = round(width * .04), round(height * .04)
+    margin_x, margin_y = round(width * .015), round(height * .015)
     if left <= margin_x or right >= width - margin_x or top <= margin_y or bottom >= height - margin_y:
         return fail("Use an uncropped photo with the entire face visible and space around the head.")
     if cv2 is not None:
@@ -85,7 +93,7 @@ def validate(path, pose='front', front_path=None):
     nose = np.mean(points['nose_tip'], axis=0)
     eye_span = abs(float(right_eye[0] - left_eye[0]))
     mouth_span = np.ptp(np.asarray(points['top_lip'])[:, 0])
-    if eye_span < face_width * 0.20 or mouth_span < face_width * 0.12:
+    if eye_span < face_width * 0.15 or mouth_span < face_width * 0.08:
         return fail('Turn less and keep both eyes, nose, and mouth clearly visible.')
     if abs(float(left_eye[1] - right_eye[1])) > eye_span * MAX_EYE_ROLL:
         return fail('Keep the head upright without tilting sideways.')

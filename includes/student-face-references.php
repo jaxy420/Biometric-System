@@ -32,6 +32,75 @@ function studentFaceReferences(mysqli $conn, int $id): array
     return $references;
 }
 
+/** Pending enrollment photos survive a form-validation redirect, but never become public files. */
+function studentFaceDraftDirectory(): string
+{
+    return __DIR__ . '/../storage/student-face-drafts/';
+}
+
+function studentFaceDrafts(): array
+{
+    $stored = $_SESSION['student_face_drafts'] ?? [];
+    if (!is_array($stored)) return [];
+    $drafts = [];
+    foreach (['front', 'left', 'right'] as $pose) {
+        $filename = $stored[$pose] ?? '';
+        if (!is_string($filename) || !preg_match('/^[a-f0-9]{32}\.(?:jpg|png)$/D', $filename)) continue;
+        if (is_file(studentFaceDraftDirectory() . $filename)) $drafts[$pose] = $filename;
+    }
+    return $drafts;
+}
+
+function clearStudentFaceDrafts(): void
+{
+    foreach (studentFaceDrafts() as $filename) @unlink(studentFaceDraftDirectory() . $filename);
+    unset($_SESSION['student_face_drafts']);
+}
+
+function storeStudentFaceDraftsFromRequest(): void
+{
+    $directory = studentFaceDraftDirectory();
+    if (!is_dir($directory) && !mkdir($directory, 0700, true)) throw new RuntimeException('Could not temporarily retain the selected student photos.');
+    if (file_put_contents($directory . '.htaccess', "Require all denied\n") === false) throw new RuntimeException('Could not protect the selected student photos.');
+    $drafts = studentFaceDrafts();
+    foreach (['front', 'left', 'right'] as $pose) {
+        if ($pose !== 'front' && !empty($_POST['remove_face_' . $pose])) {
+            if (isset($drafts[$pose])) @unlink($directory . $drafts[$pose]);
+            unset($drafts[$pose]);
+            continue;
+        }
+        $source = null;
+        $extension = null;
+        $sourceIsBytes = false;
+        if ($pose === 'front' && !empty($_POST['captured_image'])) {
+            $data = $_POST['captured_image'];
+            if (!is_string($data) || strlen($data) > 7 * 1024 * 1024 || !preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#', $data, $match)) throw new RuntimeException('Invalid captured front photo.');
+            $bytes = base64_decode($match[1], true);
+            if ($bytes === false || strlen($bytes) === 0 || strlen($bytes) > 5 * 1024 * 1024) throw new RuntimeException('Invalid captured front photo.');
+            $source = $bytes;
+            $extension = 'jpg';
+            $sourceIsBytes = true;
+        } else {
+            $upload = $_FILES[$pose === 'front' ? 'student_image' : 'face_' . $pose] ?? null;
+            if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+            if (($upload['error'] ?? null) !== UPLOAD_ERR_OK || !is_uploaded_file($upload['tmp_name'] ?? '')) throw new RuntimeException("The $pose photo could not be uploaded (maximum 5 MB).");
+            if (($upload['size'] ?? 0) <= 0 || ($upload['size'] ?? 0) > 5 * 1024 * 1024) throw new RuntimeException("The $pose photo must be smaller than 5 MB.");
+            $extension = biometricImageExtension($upload['tmp_name']);
+            if (!$extension) throw new RuntimeException("Only JPEG and PNG files can be used for the $pose photo.");
+            $source = $upload['tmp_name'];
+        }
+        $filename = bin2hex(random_bytes(16)) . '.' . $extension;
+        $target = $directory . $filename;
+        $saved = $sourceIsBytes
+            ? file_put_contents($target, $source) !== false
+            : copy((string)$source, $target);
+        if (!$saved) throw new RuntimeException("Could not retain the $pose photo. Please choose it again.");
+        if (isset($drafts[$pose])) @unlink($directory . $drafts[$pose]);
+        $drafts[$pose] = $filename;
+    }
+    $_SESSION['student_face_drafts'] = $drafts;
+}
+
 /** Existing web photos are preferred; the historical scanner copy is a fallback. */
 function recognitionReferencePath(string $path): ?string
 {
@@ -66,6 +135,7 @@ function recognitionStudentReferences(mysqli $conn): array
 function prepareStudentFaceUploads(bool $requireFront = false, ?string $existingFront = null, array $existingReferences = []): array
 {
     $prepared = [];
+    $drafts = !empty($_POST['use_student_face_drafts']) ? studentFaceDrafts() : [];
     try {
         foreach (['front', 'left', 'right'] as $pose) {
             if (!empty($_POST['remove_face_' . $pose]) && $pose !== 'front') {
@@ -85,6 +155,9 @@ function prepareStudentFaceUploads(bool $requireFront = false, ?string $existing
                 $prepared[$pose] = ['source' => $temporary, 'temporary' => true];
                 if (file_put_contents($temporary, $bytes) === false) throw new RuntimeException('Could not save captured photo.');
                 $source = $temporary;
+            } elseif (isset($drafts[$pose])) {
+                $source = studentFaceDraftDirectory() . $drafts[$pose];
+                $prepared[$pose] = ['source' => $source, 'temporary' => false, 'draft' => true];
             } else {
                 if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
                 if (($upload['error'] ?? null) !== UPLOAD_ERR_OK || !is_uploaded_file($upload['tmp_name'] ?? '')) throw new RuntimeException("The $pose photo could not be uploaded (maximum 5 MB).");

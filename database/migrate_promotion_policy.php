@@ -2,9 +2,11 @@
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 require __DIR__ . '/../config/db_conn.php';
+require_once __DIR__ . '/../includes/teacher-access-schema.php';
 require_once __DIR__ . '/../includes/promotion-policy-schema.php';
 $year = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
 if (!preg_match('/^(\d{4})-(\d{4})$/', $year, $match) || (int)$match[2] !== (int)$match[1]+1) throw new RuntimeException('Invalid active school year.');
+ensureTeacherAccessSchema($conn);
 ensurePromotionPolicySchema($conn);
 $conn->begin_transaction();
 try {

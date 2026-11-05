@@ -16,6 +16,9 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioTrack;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.media.ToneGenerator;
@@ -154,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
     scannerId = "";
   private volatile long recognitionGraceUntil = 0;
   private volatile long unrecognizedMessageUntil = 0;
+  private volatile long lastRecognizedFaceAt = 0;
   private String guideStatusText = "";
   private int unrecognizedStreak = 0;
   // The camera can send another frame immediately after recording a time in.
@@ -231,7 +235,10 @@ public class MainActivity extends AppCompatActivity {
       new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
       ContextCompat.RECEIVER_NOT_EXPORTED
     );
-    recognitionTone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+    // Scanner confirmation should follow the phone's media volume. Many
+    // Android devices silence the notification stream or notification channel,
+    // which made a successful scan appear to have no sound.
+    recognitionTone = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
     faceDetector = FaceDetection.getClient(
       new FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
@@ -1207,6 +1214,7 @@ public class MainActivity extends AppCompatActivity {
       if (matches != null && matches.length() > 0) {
         unrecognizedStreak = 0;
         unrecognizedMessageUntil = 0;
+        lastRecognizedFaceAt = System.currentTimeMillis();
         recognitionGraceUntil = System.currentTimeMillis() + 5000;
         JSONObject match = matches.getJSONObject(0);
         if (scanning) runOnUiThread(() -> {
@@ -1217,18 +1225,22 @@ public class MainActivity extends AppCompatActivity {
         if (
           scanning &&
           message.toLowerCase().contains("not recognized") &&
-          ++unrecognizedStreak >= 5 &&
+          ++unrecognizedStreak >= 7 &&
           System.currentTimeMillis() >= recognitionGraceUntil &&
           System.currentTimeMillis() >= unrecognizedMessageUntil
-        ) runOnUiThread(() -> {
-          if (scanning) {
-            // Do not keep replaying the red warning while the same unknown
-            // face remains in the camera preview.
-            unrecognizedMessageUntil = System.currentTimeMillis() + 6000;
-            unrecognizedStreak = 0;
-            showFaceToast("Face not recognized.", false);
-          }
-        });
+        ) {
+          // Give the next frame a chance to return its match. This prevents
+          // an old unsuccessful frame from flashing over a successful scan.
+          final long warningForLastMatchAt = lastRecognizedFaceAt;
+          unrecognizedMessageUntil = System.currentTimeMillis() + 7000;
+          unrecognizedStreak = 0;
+          runOnUiThread(() -> interfaceHandler.postDelayed(() -> {
+            if (
+              scanning && !waitingForFaceExit &&
+              lastRecognizedFaceAt == warningForLastMatchAt
+            ) showFaceToast("Face not recognized.", false);
+          }, 1800));
+        }
       }
     } catch (Exception error) {
       if (scanning) runOnUiThread(() -> {
@@ -1338,19 +1350,46 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void playRecognitionSound() {
-    try {
-      if (recognitionTone != null) recognitionTone.startTone(
-        ToneGenerator.TONE_PROP_ACK,
-        180
-      );
-    } catch (Exception ignored) {}
-    try {
-      Uri notificationSound = RingtoneManager.getDefaultUri(
-        RingtoneManager.TYPE_NOTIFICATION
-      );
-      Ringtone ringtone = RingtoneManager.getRingtone(this, notificationSound);
-      if (ringtone != null) ringtone.play();
-    } catch (Exception ignored) {}
+    // Use the alarm stream so the scan confirmation is clear even when media
+    // volume is lower than the phone's alert volume.
+    new Thread(() -> {
+      try {
+        final int sampleRate = 22050;
+        final int durationMs = 700;
+        final int samples = sampleRate * durationMs / 1000;
+        short[] pcm = new short[samples];
+        for (int i = 0; i < samples; i++) {
+          int pulse = i / (sampleRate / 5);
+          boolean sounding = pulse == 0 || pulse == 2;
+          double frequency = pulse == 0 ? 880.0 : 1320.0;
+          pcm[i] = sounding
+            ? (short) (Math.sin(2.0 * Math.PI * frequency * i / sampleRate) * 32700.0)
+            : 0;
+        }
+        AudioTrack track = new AudioTrack.Builder()
+          .setAudioAttributes(new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build())
+          .setAudioFormat(new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .setSampleRate(sampleRate)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .build())
+          .setBufferSizeInBytes(samples * 2)
+          .setTransferMode(AudioTrack.MODE_STATIC)
+          .build();
+        track.write(pcm, 0, pcm.length);
+        track.play();
+        Thread.sleep(durationMs + 80L);
+        track.stop();
+        track.release();
+      } catch (Exception ignored) {
+        try {
+          if (recognitionTone != null) recognitionTone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 450);
+        } catch (Exception ignoredAgain) {}
+      }
+    }).start();
   }
 
   private void loadResultPhoto(String imagePath) {
@@ -1387,6 +1426,7 @@ public class MainActivity extends AppCompatActivity {
     unrecognizedStreak = 0;
     recognitionGraceUntil = 0;
     unrecognizedMessageUntil = 0;
+    lastRecognizedFaceAt = 0;
     if (scanTask != null) {
       scanTask.cancel(false);
       scanTask = null;

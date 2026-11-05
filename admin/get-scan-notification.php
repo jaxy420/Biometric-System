@@ -64,5 +64,8 @@ echo json_encode([
         'imagePath' => (string) ($row['IMAGE_PATH'] ?? ''),
         'action' => $action,
         'actionLabel' => $actionLabel,
+        // Lets a freshly opened admin page notify about a scan that happened
+        // moments before its first polling request, without replaying history.
+        'isRecent' => strtotime((string) ($row['ATTENDANCE_UPDATED_AT'] ?? '')) >= time() - 60,
     ],
 ]);
