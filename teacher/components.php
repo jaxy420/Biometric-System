@@ -33,8 +33,8 @@ function teacherHead(string $title): void { ?>
         main > header { position: relative; border-bottom-color: #c8dceb !important; box-shadow: 0 3px 14px rgb(31 79 145 / .06); }
         main > header::after { position: absolute; right: 0; bottom: -2px; left: 0; height: 2px; content: ''; background: linear-gradient(90deg, var(--maruhat-blue), var(--maruhat-green), var(--maruhat-gold)); }
         @media (min-width: 1024px) {
-            [data-teacher-nav] { transition: transform .2s ease, width .2s ease, padding .2s ease; }
-            [data-teacher-nav].desktop-collapsed { width: 0 !important; padding-left: 0 !important; padding-right: 0 !important; overflow: hidden !important; }
+            [data-teacher-nav] { flex: 0 0 16rem; min-width: 16rem; transition: transform .2s ease, opacity .15s ease; }
+            [data-teacher-nav].desktop-collapsed { width: 0 !important; min-width: 0; flex-basis: 0; padding-left: 0 !important; padding-right: 0 !important; overflow: hidden !important; }
             [data-teacher-nav].desktop-collapsed > * { opacity: 0; pointer-events: none; }
         }
         @media (max-width: 639px) {
@@ -84,7 +84,7 @@ function teacherShell(string $title, string $actions = ''): void {
         $crumbs = [['label' => 'Students']];
     }
 ?>
-<div class="lg:flex">
+<div class="min-w-0 lg:flex">
     <aside data-teacher-nav class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-y-auto bg-slate-950 px-0 py-4 text-slate-200 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
         <a href="students.php" class="mb-6 flex items-center gap-3 px-6 text-base font-bold text-white">
             <img src="../image/logo.png" alt="Maruhat National High School logo" class="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-sm">
@@ -128,7 +128,7 @@ function teacherShell(string $title, string $actions = ''): void {
 
     <div data-teacher-overlay class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden"></div>
 
-    <main class="w-full min-w-0 flex-1">
+    <main class="min-w-0 flex-1">
         <?php ui_topbar($crumbs, $pageDescription, $actions, 'data-teacher-menu'); ?>
 
         <div data-app-content class="w-full p-5 lg:p-7">

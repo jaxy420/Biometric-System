@@ -182,11 +182,15 @@ function adminHead(string $title): void { ?>
 
         @media (min-width: 1024px) {
             [data-admin-nav] {
-                transition: transform .2s ease, width .2s ease, padding .2s ease;
+                flex: 0 0 16rem;
+                min-width: 16rem;
+                transition: transform .2s ease, opacity .15s ease;
             }
 
             [data-admin-nav].desktop-collapsed {
                 width: 0 !important;
+                min-width: 0;
+                flex-basis: 0;
                 padding-left: 0 !important;
                 padding-right: 0 !important;
                 overflow: hidden !important;
@@ -259,7 +263,7 @@ function adminSidebar(string $active, string $title, string $subtitle = '', stri
         : 'bottom-5 right-5';
     unset($_SESSION['toast']);
 ?>
-    <div class="lg:flex">
+    <div class="min-w-0 lg:flex">
         <aside data-admin-nav
             class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-y-auto bg-slate-950 px-0 py-4 text-slate-200 transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
             <a href="home.php" class="mb-6 flex items-center gap-3 px-6 text-base font-bold text-white">
@@ -285,7 +289,7 @@ function adminSidebar(string $active, string $title, string $subtitle = '', stri
 
         <div data-admin-overlay class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden"></div>
 
-        <main class="w-full min-w-0 flex-1">
+        <main class="min-w-0 flex-1">
             <?php ui_topbar($crumbs, $subtitle, $actions, 'data-admin-menu'); ?>
 
             <div data-app-content class="w-full p-5 lg:p-7">
