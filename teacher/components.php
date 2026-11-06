@@ -46,6 +46,8 @@ function teacherHead(string $title): void { ?>
             main .overflow-x-auto > table { min-width: 760px; }
         }
     </style>
+    <link rel="stylesheet" href="../css/responsive-tables.css?v=<?= (int) @filemtime(__DIR__ . '/../css/responsive-tables.css') ?>">
+    <script defer src="../js/responsive-tables.js?v=<?= (int) @filemtime(__DIR__ . '/../js/responsive-tables.js') ?>"></script>
 </head>
 <body class="overflow-x-hidden bg-slate-50 text-slate-800">
 <?php }
