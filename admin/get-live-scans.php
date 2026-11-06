@@ -72,7 +72,7 @@ $offset = ($page - 1) * $pageSize;
 $listSql =
     "SELECT e.ID EVENT_ID, e.STUDENT_ID, e.EVENT_TYPE, e.SCANNED_AT, e.SCANNER_SOURCE,
             e.SCANNER_NAME, e.SCANNER_ID, e.GRADE_SNAPSHOT, e.SECTION_SNAPSHOT,
-            s.STUDENT_NAME, s.LAST_NAME, s.FIRST_NAME, s.MIDDLE_NAME,
+            s.STUDENT_NAME, s.LAST_NAME, s.FIRST_NAME, s.MIDDLE_NAME, s.IMAGE_PATH,
             a.ID ATTENDANCE_ID, a.TIME_IN, a.LUNCH_OUT, a.AFTERNOON_TIME_IN, a.TIME_OUT, a.ATTENDANCE_REMARK
        FROM attendance_scan_events e
        {$latestJoin}
@@ -142,7 +142,8 @@ while ($row = $result->fetch_assoc()) {
     );
     $rows .=
         '<tr class="transition hover:bg-slate-50" data-key="' . $rowKey . '">'
-        . '<td class="px-4 py-4 font-bold text-slate-900">' . htmlspecialchars($name) . '</td>'
+        . '<td class="px-4 py-4 text-center font-semibold text-slate-400">' . ($offset + $count) . '</td>'
+        . '<td class="px-4 py-4"><div class="flex items-center gap-3"><img src="../' . htmlspecialchars((string) ($row['IMAGE_PATH'] ?: 'image/student-preview.png'), ENT_QUOTES) . '" alt="" class="h-9 w-9 rounded-full object-cover"><span class="font-bold text-slate-900">' . htmlspecialchars($name) . '</span></div></td>'
         . '<td class="px-4 py-4 font-medium text-slate-700">' . htmlspecialchars((string) $row["STUDENT_ID"]) . '</td>'
         . '<td class="px-4 py-4"><span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700 whitespace-nowrap">Grade ' . htmlspecialchars((string) $rowGrade) . '</span></td>'
         . '<td class="px-4 py-4"><span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">' . htmlspecialchars((string) $rowSection) . '</span></td>'
@@ -156,7 +157,7 @@ while ($row = $result->fetch_assoc()) {
 
 if ($count === 0) {
     $rows =
-        '<tr><td colspan="9" class="px-4 py-14 text-center"><p class="text-base font-black text-slate-800">No scans recorded yet.</p><p class="mt-1 text-sm text-slate-500">Successful biometric scans for this date will appear here.</p></td></tr>';
+        '<tr><td colspan="10" class="px-4 py-14 text-center"><p class="text-base font-black text-slate-800">No scans recorded yet.</p><p class="mt-1 text-sm text-slate-500">Successful biometric scans for this date will appear here.</p></td></tr>';
 }
 
 echo json_encode([

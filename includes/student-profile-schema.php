@@ -17,9 +17,11 @@ function ensureStudentProfileColumns(mysqli $conn): void
 {
     ensureStudentStatusColumn($conn);
     $columns = [];
+    $archiveReasonType = '';
     $result = $conn->query('SHOW COLUMNS FROM students');
     while ($result && ($column = $result->fetch_assoc())) {
         $columns[strtoupper($column['Field'])] = true;
+        if (strtoupper($column['Field']) === 'ARCHIVE_REASON') $archiveReasonType = strtolower((string) $column['Type']);
     }
     if (!isset($columns['FIRST_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN FIRST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER STUDENT_NAME");
     if (!isset($columns['MIDDLE_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN MIDDLE_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER FIRST_NAME");
@@ -31,7 +33,7 @@ function ensureStudentProfileColumns(mysqli $conn): void
     if (!isset($columns['ENROLLMENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN ENROLLMENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Enrolled' AFTER SECTION");
     if (!isset($columns['STUDENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN STUDENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Active' AFTER ENROLLMENT_STATUS");
     if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(255) NOT NULL DEFAULT '' AFTER STUDENT_STATUS");
-    else $conn->query("ALTER TABLE students MODIFY ARCHIVE_REASON VARCHAR(255) NOT NULL DEFAULT ''");
+    elseif ($archiveReasonType !== 'varchar(255)') $conn->query("ALTER TABLE students MODIFY ARCHIVE_REASON VARCHAR(255) NOT NULL DEFAULT ''");
     if (!isset($columns['ARCHIVED_AT'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER ARCHIVE_REASON");
     if (!isset($columns['IS_ARCHIVED'])) $conn->query("ALTER TABLE students ADD COLUMN IS_ARCHIVED TINYINT(1) NOT NULL DEFAULT 0 AFTER ARCHIVED_AT");
     // Graduation is performed only by the year-end rollover. A general

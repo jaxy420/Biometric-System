@@ -27,6 +27,11 @@ $age = (int)($_POST['age'] ?? 0);
 $strand = trim($_POST['strand'] ?? '');
 $address = trim($_POST['address'] ?? '');
 $enrollmentStatus = trim($_POST['enrollment_status'] ?? 'Enrolled');
+$archiveReason = trim($_POST['archive_reason'] ?? '');
+$archivalStatuses = ['Transferred', 'Dropped', 'Kickout'];
+$isArchived = in_array($enrollmentStatus, $archivalStatuses, true) ? 1 : 0;
+$studentStatus = $isArchived ? 'Archived' : 'Active';
+$archivedAt = $isArchived ? date('Y-m-d H:i:s') : null;
 
 $validPlacement = isValidStudentPlacement($grade, $strand, $section) || isApprovedStudentSection($conn, $grade, $strand, $section);
 if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidStudentAge($age) || $address==='' || strlen($address)>255 || !$validPlacement || !isValidStudentEnrollmentStatus($enrollmentStatus)){
@@ -34,6 +39,12 @@ if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidSt
     header("Location: edit-student.php?id=$id");
     exit;
 }
+if ($isArchived && ($archiveReason === '' || mb_strlen($archiveReason) > 255)) {
+    $_SESSION['toast'] = ['message' => 'A reason is required when dropping, kicking out, or transferring a student.', 'type' => 'error'];
+    header("Location: edit-student.php?id=$id");
+    exit;
+}
+if (!$isArchived) $archiveReason = '';
 
 // 🛡️ GUARD: Duplicate LRN check
 $check_sql = "SELECT ID FROM students WHERE STUDENT_ID = ? AND ID != ?";
@@ -65,10 +76,8 @@ try {
     if (!$existing) throw new RuntimeException('Student profile was not found.');
     $db_path = $existing['IMAGE_PATH'];
     $prepared = prepareStudentFaceUploads(false, recognitionReferencePath($db_path), studentFaceReferences($conn, (int)$id));
-// Archiving is deliberately performed by archive-student.php, not by editing
-// an enrollment-status field.
-$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
-$stmt->bind_param("sssssiisssssi", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
+$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, STUDENT_STATUS = ?, ARCHIVE_REASON = ?, IS_ARCHIVED = ?, ARCHIVED_AT = ?, IMAGE_PATH = ? WHERE ID = ?");
+$stmt->bind_param("sssssiissssssissi", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $studentStatus, $archiveReason, $isArchived, $archivedAt, $db_path, $id);
 
     $stmt->execute();
     saveStudentFaceUploads($conn, (int)$id, $prepared, $createdFiles);

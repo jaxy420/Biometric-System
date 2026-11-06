@@ -175,9 +175,9 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
             $standing['grade12_failed'] = true;
         }
         $override = trim((string) ($outcomes[$id] ?? ''));
-        $allowedOutcomes = (int) $student['GRADE'] === 10
-            ? ['', 'Retained', 'Transferred', 'Dropped', 'Kickout']
-            : ['', 'Retained'];
+        $allowedOutcomes = (int) $student['GRADE'] === 12
+            ? ['', 'Transferred', 'Dropped', 'Kickout']
+            : ['', 'Retained', 'Transferred', 'Dropped', 'Kickout'];
         if (!in_array($override, $allowedOutcomes, true)) {
             throw new RuntimeException('Invalid promotion outcome for '.$id.'.');
         }

@@ -146,7 +146,7 @@ checkPromotion('Grade 10 admin transfer and drop choices archive learners withou
         ['SECTION_ID'=>2,'SECTION'=>'Techpro One','GRADE'=>11,'STRAND'=>'Techpro','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
     ];
     $targets=promotionValidatedTargets(promotionDefaultTargets($context['students']));
-    $plan=buildPromotionPlan($context,$targets,['outcomes'=>['LRN0000'=>'Transferred','LRN0001'=>'Dropped'],'require_grade10_strands'=>true]);
+    $plan=buildPromotionPlan($context,$targets,['outcomes'=>['LRN0000'=>'Transferred','LRN0001'=>'Dropped'],'archive_reasons'=>['LRN0000'=>'Moved to another school','LRN0001'=>'Requested withdrawal'],'require_grade10_strands'=>true]);
     expectPromotion($plan['summary']['transferred'],1);expectPromotion($plan['summary']['dropped'],1);
     expectPromotion($plan['archives']['LRN0000']['reason'],'Transferred');expectPromotion($plan['archives']['LRN0001']['reason'],'Dropped');
     expectPromotion(isset($plan['students']['LRN0000']),false);expectPromotion(isset($plan['students']['LRN0001']),false);

@@ -54,6 +54,15 @@ $calendarRangeEnd = date('Y-m-d', strtotime('+10 months'));
 $calendarEntries = schoolCalendarEntries($conn, $calendarRangeStart, $calendarRangeEnd);
 $calendarToday = date('Y-m-d');
 $calendarTodayInfo = schoolDayInfo($conn, $calendarToday);
+$calendarMonth = trim((string) ($_GET['calendar_month'] ?? date('Y-m')));
+if (!preg_match('/^\d{4}-\d{2}$/', $calendarMonth)) $calendarMonth = date('Y-m');
+$calendarMonthStart = $calendarMonth . '-01';
+$calendarMonthEnd = date('Y-m-t', strtotime($calendarMonthStart));
+$calendarMonthEntries = schoolCalendarEntries($conn, $calendarMonthStart, $calendarMonthEnd);
+$calendarMonthMap = [];
+foreach ($calendarMonthEntries as $entry) $calendarMonthMap[(string) $entry['CALENDAR_DATE']] = $entry;
+$calendarGridStart = date('Y-m-d', strtotime('monday this week', strtotime($calendarMonthStart)));
+$calendarGridEnd = date('Y-m-d', strtotime('sunday this week', strtotime($calendarMonthEnd)));
 adminHead($scheduleOpen ? 'Schedule & holidays' : 'School year rollover');
 adminSidebar(
     'rollover',
@@ -256,6 +265,42 @@ if ($plan) {
                 </p>
             </div>
         </div>
+
+        <section class="mt-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900" aria-label="Monthly school calendar">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div><h4 class="font-black text-slate-900 dark:text-white">Calendar view</h4><p class="mt-1 text-sm text-slate-500">School days, holidays, suspensions, and configured breaks.</p></div>
+                <form method="get" class="flex items-end gap-2">
+                    <input type="hidden" name="view" value="schedule">
+                    <label class="text-sm font-bold text-slate-700 dark:text-slate-200">Month
+                        <input type="month" name="calendar_month" value="<?= $escape($calendarMonth) ?>" onchange="this.form.submit()" class="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                    </label>
+                </form>
+            </div>
+            <div class="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-black uppercase tracking-wide text-slate-500">
+                <?php foreach (['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] as $dayName): ?><div class="py-2"><?= $dayName ?></div><?php endforeach; ?>
+            </div>
+            <div class="grid grid-cols-7 gap-1">
+                <?php for ($cursor = $calendarGridStart; $cursor <= $calendarGridEnd; $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'))):
+                    $entry = $calendarMonthMap[$cursor] ?? null;
+                    $isCurrentMonth = substr($cursor, 0, 7) === $calendarMonth;
+                    $weekday = (int) date('N', strtotime($cursor));
+                    $type = (string) ($entry['DAY_TYPE'] ?? ($weekday <= 5 ? 'school' : 'weekend'));
+                    $label = (string) ($entry['LABEL'] ?? '');
+                    $dayClass = match ($type) {
+                        'holiday' => 'border-rose-200 bg-rose-50 text-rose-800',
+                        'suspension', 'vacation' => 'border-violet-200 bg-violet-50 text-violet-800',
+                        'special' => 'border-amber-200 bg-amber-50 text-amber-800',
+                        'weekend' => 'border-slate-200 bg-slate-50 text-slate-400',
+                        default => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                    };
+                ?>
+                <div class="min-h-20 rounded-lg border p-2 text-left <?= $dayClass ?> <?= $isCurrentMonth ? '' : 'opacity-40' ?> <?= $cursor === $calendarToday ? 'ring-2 ring-blue-500' : '' ?>" title="<?= $escape($label ?: schoolCalendarTypeLabel($type)) ?>">
+                    <p class="font-black"><?= (int) date('j', strtotime($cursor)) ?></p>
+                    <p class="mt-1 truncate text-[10px] font-bold"><?= $escape($label ?: schoolCalendarTypeLabel($type)) ?></p>
+                </div>
+                <?php endfor; ?>
+            </div>
+        </section>
 
         <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/60 dark:bg-violet-900/20">
             <div>
@@ -646,10 +691,12 @@ if ($plan) {
                             <td class="px-3 py-3">
                                 <?php if (!empty($st['teacher_retained'])): ?>
                                 <span class="rounded-full bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-700">Teacher flagged Retained</span>
-                                <?php elseif ((int) $s['GRADE'] === 10 && ($s['ENROLLMENT_STATUS'] ?? '') === 'Enrolled'): ?>
+                                <?php elseif (($s['ENROLLMENT_STATUS'] ?? '') === 'Enrolled'): ?>
                                 <select form="rollover-choices-form" name="outcomes[<?= $escape($sid) ?>]" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                     <option value="" <?= empty($choices['outcomes'][$sid]) ? 'selected' : '' ?>>Automatic outcome</option>
+                                    <?php if ((int) $s['GRADE'] < 12): ?>
                                     <option value="Retained" <?= ($choices['outcomes'][$sid] ?? '') === 'Retained' ? 'selected' : '' ?>>Retained</option>
+                                    <?php endif; ?>
                                     <option value="Transferred" <?= ($choices['outcomes'][$sid] ?? '') === 'Transferred' ? 'selected' : '' ?>>Transferred / archive</option>
                                     <option value="Dropped" <?= ($choices['outcomes'][$sid] ?? '') === 'Dropped' ? 'selected' : '' ?>>Dropped / archive</option>
                                     <option value="Kickout" <?= ($choices['outcomes'][$sid] ?? '') === 'Kickout' ? 'selected' : '' ?>>Kickout / archive</option>
@@ -657,11 +704,6 @@ if ($plan) {
                                 <input form="rollover-choices-form" name="archive_reasons[<?= $escape($sid) ?>]" maxlength="230"
                                     value="<?= $escape($choices['archive_reasons'][$sid] ?? '') ?>" placeholder="Required reason if archiving"
                                     class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs">
-                                <?php elseif (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] < 12): ?>
-                                <select form="rollover-choices-form" name="outcomes[<?= $escape($sid) ?>]" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
-                                    <option value="" <?= empty($choices['outcomes'][$sid]) ? 'selected' : '' ?>>Automatic outcome</option>
-                                    <option value="Retained" <?= ($choices['outcomes'][$sid] ?? '') === 'Retained' ? 'selected' : '' ?>>Retained</option>
-                                </select>
                                 <?php else: ?><span class="text-slate-500"><?= $escape($st['decision']) ?></span><?php endif; ?>
                             </td>
                             <td class="px-3 py-3">

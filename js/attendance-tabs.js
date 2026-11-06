@@ -189,7 +189,7 @@ window.initAttendanceTabs = function (config) {
       console.warn('Attendance load failed.', error);
       const body = bodies[tab];
       if (body) {
-        body.innerHTML = '<tr><td colspan="' + (tab === 'daily' ? 11 : 9) + '" class="px-4 py-8 text-center text-rose-600">Could not load records. Check your connection and try again.</td></tr>';
+        body.innerHTML = '<tr><td colspan="' + (tab === 'daily' ? 12 : 10) + '" class="px-4 py-8 text-center text-rose-600">Could not load records. Check your connection and try again.</td></tr>';
       }
       if (isActive && pagers[tab]) pagers[tab].hidden = true;
     }

@@ -117,7 +117,7 @@ adminSidebar(
                     $dateValue = $isArchivedView ? ($teacher['ARCHIVED_AT'] ?? '') : ($teacher['CREATED_AT'] ?? '');
                 ?>
                 <tr class="hover:bg-slate-50" data-teacher-search="<?= htmlspecialchars(strtolower($teacher['TEACHER_NAME'].' '.$teacher['TEACHER_USER']), ENT_QUOTES) ?>">
-                    <td class="teacher-index px-5 py-4 text-center font-semibold text-slate-400"></td>
+                    <td class="teacher-index table-index px-5 py-4 text-center font-semibold text-slate-400"></td>
                     <td class="px-5 py-4 font-bold text-slate-900"><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></td>
                     <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($teacher['TEACHER_USER']) ?></td>
                     <td class="px-5 py-4">
@@ -212,7 +212,7 @@ adminSidebar(
         </form>
     </div>
 </div>
-<script src="../js/table-pagination.js?v=7"></script>
+<script src="../js/table-pagination.js?v=8"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('teacher-rows');

@@ -2,7 +2,9 @@
 require "page-guard.php";
 require "../config/db_conn.php";
 require "../includes/attendance-schema.php";
+require "../includes/school-year-schema.php";
 ensureAttendanceTimeOutColumn($conn);
+ensureSchoolYearRolloverSchema($conn);
 require "../includes/xlsx-export.php";
 
 $date = $_GET["date"] ?? date("Y-m-d");
@@ -110,11 +112,18 @@ if ($dateFrom !== $dateTo) {
  * attendance. The recorded section/grade (snapshot) is preferred so historical
  * records stay with the class they were taken in; current placement is fallback.
  */
+$exportDateYear = (int) substr($date, 0, 4);
+$exportDateMonth = (int) substr($date, 5, 2);
+$exportSchoolYear = $exportDateMonth >= 6
+    ? $exportDateYear . '-' . ($exportDateYear + 1)
+    : ($exportDateYear - 1) . '-' . $exportDateYear;
+$historicalGrade = "COALESCE(a.GRADE_SNAPSHOT, h.GRADE, s.GRADE)";
+$historicalSection = "COALESCE(NULLIF(a.SECTION_SNAPSHOT,''), NULLIF(h.SECTION,''), s.SECTION)";
 $stmt = $conn->prepare(
     "SELECT a.ID ATTENDANCE_ID, s.STUDENT_ID,
             COALESCE(NULLIF(s.STUDENT_NAME,''), CONCAT_WS(' ', s.FIRST_NAME, s.MIDDLE_NAME, s.LAST_NAME)) STUDENT_NAME,
-            {$recordedGrade} GRADE,
-            {$recordedSection} SECTION,
+            {$historicalGrade} GRADE,
+            {$historicalSection} SECTION,
             a.TIME_IN, a.TIME_OUT, a.ATTENDANCE_REMARK, a.ATTENDANCE_NOTE
        FROM students s
        LEFT JOIN attendance a ON a.ID = (
@@ -123,15 +132,17 @@ $stmt = $conn->prepare(
             ORDER BY a2.TIME_IN DESC, a2.ID DESC
             LIMIT 1
        )
+      LEFT JOIN student_school_history h ON TRIM(h.STUDENT_ID)=TRIM(s.STUDENT_ID) AND h.SCHOOL_YEAR=?
       WHERE (a.ID IS NOT NULL OR COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled')
-        AND (?='all' OR {$recordedGrade}=?)
-        AND (?='all' OR {$recordedSection}=?)
+        AND (?='all' OR {$historicalGrade}=?)
+        AND (?='all' OR {$historicalSection}=?)
         AND (?='' OR s.STUDENT_ID=?)
       ORDER BY {$recordedSection}, s.LAST_NAME, s.FIRST_NAME, s.STUDENT_NAME",
 );
 $stmt->bind_param(
-    "sssssss",
+    "ssssssss",
     $date,
+    $exportSchoolYear,
     $grade,
     $grade,
     $section,

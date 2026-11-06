@@ -3,11 +3,14 @@ require "page-guard.php";
 require "../config/db_conn.php";
 require "../includes/attendance-schema.php";
 ensureAttendanceTimeOutColumn($conn);
+header('Content-Type: application/json; charset=utf-8');
 
 $grade = $_GET["grade"] ?? "all";
 $section = $_GET["section"] ?? "all";
 $filterDate = $_GET["date"] ?? date("Y-m-d");
 $student = trim($_GET["student"] ?? "");
+$page = max(1, (int) ($_GET['page'] ?? 1));
+$pageSize = 15;
 $where = ["COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled'"];
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $filterDate)) {
     http_response_code(400);
@@ -25,13 +28,20 @@ if ($student !== "") {
 }
 $safeDate = mysqli_real_escape_string($conn, $filterDate);
 $query =
-    "SELECT a.ID ATTENDANCE_ID,s.STUDENT_ID,s.STUDENT_NAME,s.LAST_NAME,s.FIRST_NAME,s.MIDDLE_NAME,s.GRADE,s.SECTION,COALESCE(a.GRADE_SNAPSHOT,s.GRADE) DISPLAY_GRADE,COALESCE(NULLIF(a.SECTION_SNAPSHOT,''),s.SECTION) DISPLAY_SECTION,a.TIME_IN,a.LUNCH_OUT,a.AFTERNOON_TIME_IN,a.TIME_OUT,a.ATTENDANCE_REMARK,a.ATTENDANCE_NOTE FROM students s LEFT JOIN attendance a ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)='$safeDate' WHERE " .
+    "SELECT a.ID ATTENDANCE_ID,s.STUDENT_ID,s.STUDENT_NAME,s.LAST_NAME,s.FIRST_NAME,s.MIDDLE_NAME,s.IMAGE_PATH,s.GRADE,s.SECTION,COALESCE(a.GRADE_SNAPSHOT,s.GRADE) DISPLAY_GRADE,COALESCE(NULLIF(a.SECTION_SNAPSHOT,''),s.SECTION) DISPLAY_SECTION,a.TIME_IN,a.LUNCH_OUT,a.AFTERNOON_TIME_IN,a.TIME_OUT,a.ATTENDANCE_REMARK,a.ATTENDANCE_NOTE FROM students s LEFT JOIN attendance a ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)='$safeDate' WHERE " .
     implode(" AND ", $where) .
     " ORDER BY (a.TIME_IN IS NOT NULL AND TIME(a.TIME_IN)<>'00:00:00' AND COALESCE(a.ATTENDANCE_REMARK,'') NOT IN ('Absent','Excused absence')) DESC,s.GRADE,s.SECTION,s.LAST_NAME,s.FIRST_NAME,s.STUDENT_NAME";
 $result = $conn->query($query);
+$allRows = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+$total = count($allRows);
+$pageCount = max(1, (int) ceil($total / $pageSize));
+$page = min($page, $pageCount);
+$offset = ($page - 1) * $pageSize;
+$visibleRows = array_slice($allRows, $offset, $pageSize);
+ob_start();
 
-if ($result && $result->num_rows):
-    while ($row = $result->fetch_assoc()):
+if ($visibleRows):
+    foreach ($visibleRows as $rowIndex => $row):
 
         $hasRecord = (int) ($row["ATTENDANCE_ID"] ?? 0) > 0;
         $timeIn = $hasRecord ? new DateTime($row["TIME_IN"]) : null;
@@ -82,12 +92,11 @@ if ($result && $result->num_rows):
             : "bg-slate-100 text-slate-600";
         ?>
 <tr class="transition hover:bg-slate-50">
+  <td class="px-4 py-4 text-center font-semibold text-slate-400"><?= $offset + $rowIndex + 1 ?></td>
   <td class="px-4 py-4 font-medium text-slate-700"><?= htmlspecialchars(
       $row["STUDENT_ID"],
   ) ?></td>
-  <td class="px-4 py-4 font-bold text-slate-900"><?= htmlspecialchars(
-      $name,
-  ) ?></td>
+  <td class="px-4 py-4"><div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH'] ?: 'image/student-preview.png') ?>" alt="" class="h-9 w-9 rounded-full object-cover"><span class="font-bold text-slate-900"><?= htmlspecialchars($name) ?></span></div></td>
   <td class="px-4 py-4"><span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700" style="white-space: nowrap">Grade <?= htmlspecialchars(
       $row["DISPLAY_GRADE"] ?? $row["GRADE"] ?? "N/A",
   ) ?></span></td>
@@ -155,9 +164,11 @@ if ($result && $result->num_rows):
   </td>
 </tr>
 <?php
-    endwhile;
+    endforeach;
 else:
      ?>
-<tr><td colspan="11" class="px-4 py-14 text-center"><p class="text-base font-black text-slate-800">No attendance records match the current filters.</p><p class="mt-1 text-sm text-slate-500">Try another date or adjust the grade, section, or student filter above.</p></td></tr>
+<tr><td colspan="12" class="px-4 py-14 text-center"><p class="text-base font-black text-slate-800">No attendance records match the current filters.</p><p class="mt-1 text-sm text-slate-500">Try another date or adjust the grade, section, or student filter above.</p></td></tr>
 <?php
-endif; ?>
+endif;
+$html = ob_get_clean();
+echo json_encode(['ok' => true, 'rows' => $html, 'total' => $total, 'page' => $page, 'page_size' => $pageSize, 'page_count' => $pageCount]);

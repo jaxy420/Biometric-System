@@ -144,7 +144,7 @@ adminSidebar(
                     </select></label>
             </div>
             <label class="block text-sm font-bold text-slate-700">Enrollment status<select
-                    class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="enrollment_status"
+                    id="student-enrollment-status" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="enrollment_status"
                     required><?php foreach (
           studentEnrollmentStatuses()
           as $status
@@ -159,6 +159,9 @@ $status
 ) ?></option><?php endforeach; ?></select><span class="mt-2 block text-xs font-normal text-slate-500">Only enrolled
                     students can use attendance scanning. Archived and inactive profiles remain in the system with their
                     records.</span></label>
+            <label id="student-archive-reason-field" class="block text-sm font-bold text-slate-700">Archive reason
+                <input id="student-archive-reason" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="archive_reason" maxlength="255"
+                    value="<?= htmlspecialchars((string) ($row['ARCHIVE_REASON'] ?? '')) ?>" placeholder="Required for Dropped, Kickout, or Transferred"></label>
             <div class="grid gap-5 sm:grid-cols-2">
                 <label id="strand-field" class="text-sm font-bold text-slate-700">Strand<select id="student-strand"
                         class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
@@ -345,6 +348,17 @@ $status
     gradeSelect.onchange = () => updatePlacement();
     strandSelect.onchange = () => updateSeniorSections();
     updatePlacement(true);
+
+    const enrollmentStatusSelect = document.getElementById('student-enrollment-status');
+    const archiveReasonField = document.getElementById('student-archive-reason-field');
+    const archiveReasonInput = document.getElementById('student-archive-reason');
+    function syncArchiveReason() {
+        const requiresReason = ['Transferred', 'Dropped', 'Kickout'].includes(enrollmentStatusSelect.value);
+        archiveReasonField.hidden = !requiresReason;
+        archiveReasonInput.required = requiresReason;
+    }
+    enrollmentStatusSelect.addEventListener('change', syncArchiveReason);
+    syncArchiveReason();
 </script>
 <script>
     (() => {

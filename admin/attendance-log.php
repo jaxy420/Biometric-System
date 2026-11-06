@@ -73,33 +73,25 @@ adminSidebar(
         line-height: 1.2;
     }
 
-    #attendance-log-table th:nth-child(1) { width: 10%; }
-    #attendance-log-table th:nth-child(2) { width: 16%; }
-    #attendance-log-table th:nth-child(3) { width: 8%; }
-    #attendance-log-table th:nth-child(4) { width: 9%; }
-    #attendance-log-table th:nth-child(5) { width: 8%; }
-    #attendance-log-table th:nth-child(6) { width: 7%; }
-    #attendance-log-table th:nth-child(7) { width: 7%; }
-    #attendance-log-table th:nth-child(8) { width: 7%; }
-    #attendance-log-table th:nth-child(9) { width: 7%; }
-    #attendance-log-table th:nth-child(10) { width: 8%; }
-    #attendance-log-table th:nth-child(11) { width: 13%; }
+    #attendance-log-table th:nth-child(1) { width: 4%; }
+    #attendance-log-table th:nth-child(2) { width: 10%; }
+    #attendance-log-table th:nth-child(3) { width: 18%; }
 
     #attendance-log-table .rounded-full {
         padding: .25rem .45rem;
     }
 
-    #attendance-log-table td:nth-child(2) {
+    #attendance-log-table td:nth-child(3) {
         overflow-wrap: anywhere;
     }
 
-    #attendance-log-table td:nth-child(11),
-    #attendance-log-table td:nth-child(11) a,
-    #attendance-log-table td:nth-child(11) button {
+    #attendance-log-table td:nth-child(12),
+    #attendance-log-table td:nth-child(12) a,
+    #attendance-log-table td:nth-child(12) button {
         white-space: nowrap;
     }
 
-    #attendance-log-table td:nth-child(11) > div > div {
+    #attendance-log-table td:nth-child(12) > div > div {
         flex-wrap: nowrap;
     }
 
@@ -272,6 +264,7 @@ adminSidebar(
             <table id="live-scans-table" class="w-full text-left border-collapse">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
+                        <th>#</th>
                         <th>Student</th>
                         <th>LRN</th>
                         <th>Grade</th>
@@ -294,8 +287,9 @@ adminSidebar(
             <table id="attendance-log-table" class="w-full text-left border-collapse">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
+                        <th>#</th>
                         <th>LRN</th>
-                        <th>Name</th>
+                        <th>Student</th>
                         <th>Grade</th>
                         <th>Section</th>
                         <th>Date</th>
@@ -319,6 +313,7 @@ adminSidebar(
             <table id="scan-history-table" class="w-full text-left border-collapse">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
+                        <th>#</th>
                         <th>Scan time</th>
                         <th>Student</th>
                         <th>LRN</th>
@@ -403,7 +398,7 @@ adminSidebar(
         </dl>
     </div>
 </div>
-<script src="../js/attendance-tabs.js?v=1"></script>
+<script src="../js/attendance-tabs.js?v=2"></script>
 <script src="../js/attendance-live-refresh.js?v=1"></script>
 <script>
     const gradeFilter = document.getElementById('grade-filter'),
