@@ -105,7 +105,7 @@ adminSidebar(
                     <th class="px-5 py-4">Status</th>
                     <th class="px-5 py-4">Archive reason</th>
                     <?php endif; ?>
-                    <th class="px-5 py-4"></th>
+                    <th class="min-w-[190px] whitespace-nowrap px-5 py-4 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody id="teacher-rows" data-page-size="<?= $limit ?>" class="divide-y divide-slate-100">
@@ -145,9 +145,9 @@ adminSidebar(
                     </td>
                     <td class="px-5 py-4 text-sm text-slate-600"><?= htmlspecialchars($teacher['ARCHIVE_REASON'] ?: 'Archived by administrator') ?></td>
                     <?php endif; ?>
-                    <td class="px-5 py-4 text-right">
+                    <td class="min-w-[190px] whitespace-nowrap px-5 py-4 text-right">
                         <?php if ($isArchivedView): ?>
-                        <div class="flex flex-wrap justify-end gap-2">
+                        <div class="flex flex-nowrap items-center justify-end gap-2">
                             <a class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
                                 href="archived-teacher-record.php?id=<?= (int) $teacher['TEACHER_ID'] ?>">Open record</a>
                             <?php $restoreOptions = availableTeacherAdvisorySections($conn, (int) $teacher['TEACHER_ID']); ?>
