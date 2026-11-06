@@ -70,7 +70,7 @@ adminHead($isArchivedView ? 'Archived teachers' : 'Teachers');
 adminSidebar(
     'teachers',
     $isArchivedView ? 'Archived teachers' : 'Teachers',
-    $isArchivedView ? 'Retained teacher accounts and access assignments.' : 'Manage teacher access and grade-section assignments.',
+    $isArchivedView ? 'Archived teacher accounts and access records.' : 'Manage teacher access and grade-section assignments.',
 );
 ?>
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -98,8 +98,7 @@ adminSidebar(
                     <th class="px-5 py-4 text-center">#</th>
                     <th class="px-5 py-4">Teacher</th>
                     <th class="px-5 py-4">Username</th>
-                    <th class="px-5 py-4"><?= $isArchivedView ? 'Retained assignments' : 'Assigned grades and sections' ?>
-                    </th>
+                    <?php if (!$isArchivedView): ?><th class="px-5 py-4">Assigned grades and sections</th><?php endif; ?>
                     <th class="px-5 py-4"><?= $isArchivedView ? 'Archived' : 'Created' ?></th>
                     <?php if ($isArchivedView): ?>
                     <th class="px-5 py-4">Status</th>
@@ -112,15 +111,15 @@ adminSidebar(
                 <?php if ($teachers && $teachers->num_rows): ?>
                 <?php while ($teacher = $teachers->fetch_assoc()): ?>
                 <?php
-                    $assignments = teacherAssignments($conn, (int) $teacher['TEACHER_ID']);
-                    $advisory = teacherAdvisoryAssignments($conn, (int) $teacher['TEACHER_ID']);
+                    $assignments = $isArchivedView ? [] : teacherAssignments($conn, (int) $teacher['TEACHER_ID']);
+                    $advisory = $isArchivedView ? [] : teacherAdvisoryAssignments($conn, (int) $teacher['TEACHER_ID']);
                     $dateValue = $isArchivedView ? ($teacher['ARCHIVED_AT'] ?? '') : ($teacher['CREATED_AT'] ?? '');
                 ?>
                 <tr class="hover:bg-slate-50" data-teacher-search="<?= htmlspecialchars(strtolower($teacher['TEACHER_NAME'].' '.$teacher['TEACHER_USER']), ENT_QUOTES) ?>">
                     <td class="teacher-index table-index px-5 py-4 text-center font-semibold text-slate-400"></td>
                     <td class="px-5 py-4 font-bold text-slate-900"><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></td>
                     <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($teacher['TEACHER_USER']) ?></td>
-                    <td class="px-5 py-4">
+                    <?php if (!$isArchivedView): ?><td class="px-5 py-4">
                         <div class="flex flex-wrap gap-2">
                             <?php foreach ($advisory as $adviserClass): ?><span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20"><?= htmlspecialchars('Adviser: Grade '.$adviserClass['GRADE'].' · '.$adviserClass['SECTION'].($adviserClass['STRAND'] ? ' · '.$adviserClass['STRAND'] : '')) ?></span><?php endforeach; ?>
                             <?php foreach ($assignments as $assignment): ?>
@@ -132,10 +131,10 @@ adminSidebar(
                                 class="rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700"><?= htmlspecialchars($label) . ($detail ? ' · ' . htmlspecialchars($detail) : '') ?></span>
                             <?php endforeach; ?>
                             <?php if (!$assignments && !$advisory): ?>
-                            <span class="text-slate-500"><?= $isArchivedView ? 'No assignments retained' : 'Not assigned' ?></span>
+                            <span class="text-slate-500">Not assigned</span>
                             <?php endif; ?>
                         </div>
-                    </td>
+                    </td><?php endif; ?>
                     <td class="px-5 py-4 text-slate-500">
                         <?= $dateValue ? htmlspecialchars(date('M j, Y', strtotime($dateValue))) : '—' ?>
                     </td>
@@ -177,7 +176,7 @@ adminSidebar(
                 <?php endwhile; ?>
                 <?php else: ?>
                 <tr>
-                    <td colspan="<?= $isArchivedView ? 8 : 6 ?>" class="px-5 py-12 text-center text-slate-500">
+                    <td colspan="<?= $isArchivedView ? 7 : 6 ?>" class="px-5 py-12 text-center text-slate-500">
                         <?= $isArchivedView ? 'No archived teacher accounts.' : 'No teacher accounts yet. Add the first teacher to get started.' ?>
                     </td>
                 </tr>
