@@ -168,12 +168,9 @@ adminSidebar(
                         <a href="edit-teacher.php?id=<?= (int) $teacher['TEACHER_ID'] ?>"
                             class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20">Open
                             profile</a>
-                        <form action="delete-teacher.php" method="post" class="inline" onsubmit="return confirm('Archive this teacher account?');">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                            <input type="hidden" name="id" value="<?= (int) $teacher['TEACHER_ID'] ?>">
-                            <input type="hidden" name="archive_reason" value="Archived by administrator">
-                            <button type="submit" class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-500/20">Archive</button>
-                        </form>
+                        <button type="button" class="archive-teacher-trigger btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-500/20"
+                            data-teacher-id="<?= (int) $teacher['TEACHER_ID'] ?>"
+                            data-teacher-name="<?= htmlspecialchars($teacher['TEACHER_NAME'], ENT_QUOTES) ?>">Archive</button>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -188,6 +185,21 @@ adminSidebar(
             </tbody>
         </table>
     </div>
+</div>
+<div id="archive-teacher-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5" role="dialog" aria-modal="true" aria-labelledby="archive-teacher-title">
+    <form action="delete-teacher.php" method="post" class="card w-full max-w-md p-6 shadow-2xl">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="id" id="archive-teacher-id">
+        <div class="flex items-start justify-between gap-4">
+            <div><h2 id="archive-teacher-title" class="text-xl font-black text-slate-900">Archive teacher?</h2><p class="mt-1 text-sm text-slate-500">This keeps the teacher record and assignments, but prevents future sign-ins.</p></div>
+            <button type="button" data-archive-modal-close class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-800" aria-label="Close">×</button>
+        </div>
+        <p id="archive-teacher-name" class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800"></p>
+        <label for="archive-teacher-reason" class="mt-5 block text-sm font-bold text-slate-700">Reason for archiving
+            <textarea id="archive-teacher-reason" name="archive_reason" rows="3" required maxlength="255" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-normal" placeholder="Example: Resigned, transferred, or no longer employed."></textarea>
+        </label>
+        <div class="mt-6 flex justify-end gap-3"><button type="button" data-archive-modal-close class="btn btn-secondary">Cancel</button><button class="btn btn-danger">Archive teacher</button></div>
+    </form>
 </div>
 <div id="advisory-search-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="advisory-modal-title">
     <div class="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
@@ -233,6 +245,20 @@ adminSidebar(
             teacherSearch = event.currentTarget.value.trim().toLowerCase();
             teacherPager.refresh(true);
         });
+
+        const archiveModal = document.getElementById('archive-teacher-modal');
+        const archiveId = document.getElementById('archive-teacher-id');
+        const archiveName = document.getElementById('archive-teacher-name');
+        const archiveReason = document.getElementById('archive-teacher-reason');
+        const closeArchiveModal = () => { archiveModal.classList.add('hidden'); archiveModal.classList.remove('flex'); };
+        document.querySelectorAll('.archive-teacher-trigger').forEach(button => button.addEventListener('click', () => {
+            archiveId.value = button.dataset.teacherId || '';
+            archiveName.textContent = button.dataset.teacherName || 'Selected teacher';
+            archiveReason.value = '';
+            archiveModal.classList.remove('hidden'); archiveModal.classList.add('flex'); archiveReason.focus();
+        }));
+        archiveModal.querySelectorAll('[data-archive-modal-close]').forEach(button => button.addEventListener('click', closeArchiveModal));
+        archiveModal.addEventListener('click', event => { if (event.target === archiveModal) closeArchiveModal(); });
 
         const modal = document.getElementById('advisory-search-modal');
         if (!modal) return;
@@ -325,7 +351,11 @@ adminSidebar(
         }));
         input.addEventListener('input', renderSections);
         modal.querySelectorAll('[data-advisory-modal-close]').forEach(button => button.addEventListener('click', closeModal));
-        document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            if (!modal.classList.contains('hidden')) closeModal();
+            if (!archiveModal.classList.contains('hidden')) closeArchiveModal();
+        });
     });
 </script>
 <?php adminFoot(); ?>

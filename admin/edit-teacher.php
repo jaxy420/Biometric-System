@@ -85,27 +85,7 @@ adminSidebar(
                 class="btn btn-primary mt-5 w-full">Update
                 password</button>
         </form>
-        <form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-            <input type="hidden" name="id" value="<?= $teacher[
-    "TEACHER_ID"
-] ?>">
-            <h3 class="font-bold text-white">Danger zone</h3>
-            <p class="mt-2 text-sm text-blue-200">Remove this teacher's access permanently.</p><button type="button"
-                id="open-delete-teacher"
-                class="mt-5 w-full rounded-xl border border-red-500/40 px-4 py-3 font-bold text-red-400 transition-colors hover:bg-red-600 hover:text-white">Delete
-                account</button>
-        </form>
     </aside>
-</div>
-<div id="delete-teacher-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5">
-    <div class="card w-full max-w-sm p-6 shadow-2xl">
-        <h3 class="text-xl font-black text-slate-900">Delete teacher account?</h3>
-        <p class="mt-2 text-sm text-slate-500">This permanently removes the teacher account and access.</p>
-        <div class="mt-6 flex gap-3"><button type="button" id="cancel-delete-teacher"
-                class="btn btn-secondary flex-1">Cancel</button><button
-                type="button" id="confirm-delete-teacher"
-                class="btn btn-danger flex-1">Delete</button></div>
-    </div>
 </div>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -229,28 +209,5 @@ adminSidebar(
     }
     document.getElementById('add-assignment').onclick = () => addAssignment();
     (savedAssignments.length ? savedAssignments : [{}]).forEach(addAssignment);
-    document.getElementById('open-delete-teacher').onclick = () => document.getElementById('delete-teacher-modal')
-        .classList.replace('hidden', 'flex');
-    document.getElementById('cancel-delete-teacher').onclick = () => document.getElementById('delete-teacher-modal')
-        .classList.replace('flex', 'hidden');
-    document.getElementById('confirm-delete-teacher').onclick = () => document.getElementById('delete-teacher-form')
-        .submit();
 </script>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const archiveForm = document.getElementById('delete-teacher-form');
-        if (archiveForm) {
-            archiveForm.querySelector('h3').textContent = 'Archive account';
-            archiveForm.querySelector('p').textContent =
-                'Keep this teacher account and assignments for reference, but remove sign-in access.';
-            document.getElementById('open-delete-teacher').textContent = 'Archive teacher';
-            document.getElementById('delete-teacher-modal').querySelector('h3').textContent =
-                'Archive teacher account?';
-            document.getElementById('delete-teacher-modal').querySelector('p').textContent =
-                'This keeps the teacher profile and assignments, but prevents future sign-ins.';
-            document.getElementById('confirm-delete-teacher').textContent = 'Archive';
-            document.getElementById('confirm-delete-teacher').className =
-                'flex-1 btn btn-danger';
-        }
-    });
-</script><?php adminFoot(); ?>
+<?php adminFoot(); ?>

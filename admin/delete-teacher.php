@@ -10,7 +10,7 @@ require_once '../includes/teacher-assignment-schema.php';
 ensureTeacherAssignmentSchema($conn);
 ensureTeacherProfileColumns($conn);
 $id=(int)($_POST['id']??0);
-$archiveReason=trim((string)($_POST['archive_reason'] ?? 'Archived by administrator'));
+$archiveReason=trim((string)($_POST['archive_reason'] ?? ''));
 if ($archiveReason === '' || mb_strlen($archiveReason) > 255) {
     $_SESSION['toast']=['message'=>'Enter an archive reason of up to 255 characters.','type'=>'error'];
     header('Location: teacher-list.php');exit;
