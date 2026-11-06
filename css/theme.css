@@ -456,25 +456,6 @@ html[data-theme="dark"] .theme-option[aria-pressed="true"] {
     padding: var(--portal-desktop-gutter);
 }
 
-/* No page may create a horizontal document scroll. Wide information remains
-   reachable inside its own table or code scroller instead. */
-html,
-body {
-    max-width: 100%;
-}
-
-img,
-svg,
-video,
-canvas {
-    max-width: 100%;
-}
-
-[data-app-content] > *,
-[data-app-content] :is(.grid, .flex) > * {
-    min-width: 0;
-}
-
 .overflow-x-auto {
     scrollbar-width: thin;
     scrollbar-color: #94a3b8 transparent;
@@ -546,22 +527,6 @@ canvas {
         padding: 0;
     }
 
-    /* Keep a compact header usable when a page supplies an action button.
-       The clock is already hidden below the sm breakpoint. */
-    .app-topbar > :last-child {
-        min-width: 0;
-        flex: 0 1 auto;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-
-    .app-topbar > :last-child :is(a, button) {
-        max-width: min(48vw, 12rem);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
     [data-app-content] {
         padding: var(--portal-phone-gutter);
         padding-right: max(var(--portal-phone-gutter), env(safe-area-inset-right));
@@ -570,23 +535,6 @@ canvas {
 
     .card-body {
         padding: 1rem;
-    }
-
-    .card-header {
-        align-items: stretch;
-        flex-direction: column;
-        gap: .75rem;
-        padding: 1rem;
-    }
-
-    .card-header > :last-child {
-        display: flex;
-        flex-wrap: wrap;
-        gap: .5rem;
-    }
-
-    .card-header > :last-child :is(a, button) {
-        flex: 1 1 auto;
     }
 
     :is(.btn, .table-filter-reset):not(.btn-sm) {
@@ -612,25 +560,6 @@ canvas {
 
     .overflow-x-auto :is(th, td) {
         white-space: nowrap;
-    }
-
-    /* Dialogs stay inside the visual viewport, including small landscape
-       phones and devices with a bottom safe-area inset. */
-    .fixed.inset-0.z-50 {
-        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-    }
-
-    .fixed.inset-0.z-50 > :is(.card, form.card, .rounded-2xl) {
-        width: 100%;
-        max-height: calc(100dvh - 2rem);
-        overscroll-behavior: contain;
-    }
-
-    /* Calendar cells remain readable rather than forcing the seven-column
-       school calendar beyond the viewport. */
-    [aria-label="Monthly school calendar"] .grid.grid-cols-7 > div {
-        min-width: 0;
-        padding: .35rem;
     }
 }
 
