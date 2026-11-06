@@ -1381,7 +1381,10 @@ public class MainActivity extends AppCompatActivity {
         label = "Afternoon time in recorded";
         break;
       case "time_out":
-        label = "Time out recorded";
+        // Time Out is the final attendance action for the day. Make that
+        // clear on the scanner's success output while keeping the same alarm
+        // confirmation used for every successfully saved scan below.
+        label = "Attendance completed";
         break;
       default:
         label = "Time in recorded";

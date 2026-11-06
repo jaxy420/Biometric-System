@@ -83,13 +83,17 @@ $assignedStrand = trim((string) ($sectionRow["STRAND"] ?? ""));
 $setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
 $schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_retention') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'retention_request') {
     try {
         if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
             throw new RuntimeException('The retention request expired. Refresh and try again.');
         }
         $studentId = trim((string) ($_POST['student_id'] ?? ''));
-        $retained = (string) ($_POST['retained'] ?? '') === '1';
+        $requestAction = (string) ($_POST['request_action'] ?? '');
+        $retentionReason = trim((string) ($_POST['retention_reason'] ?? ''));
+        if (!in_array($requestAction, ['submit', 'withdraw'], true)) {
+            throw new RuntimeException('Choose a valid retention request action.');
+        }
         $owned = $conn->prepare("SELECT s.STUDENT_ID FROM students s
             JOIN current_teacher_advisory_assignments ta
               ON ta.GRADE=s.GRADE AND ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND
@@ -100,15 +104,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
         if (!$owned->get_result()->fetch_assoc()) {
             throw new RuntimeException('You may only change retention for an enrolled Grade 7–10 student in your advisory class.');
         }
-        setStudentRetentionFlag($conn, $studentId, $schoolYear, $retained);
-        $_SESSION['toast'] = ['message'=>$retained ? 'Student marked Retained for the active school year.' : 'Retention flag removed; rollover will recalculate the outcome.', 'type'=>'success'];
+        if ($requestAction === 'submit') {
+            if ($retentionReason === '' || mb_strlen($retentionReason) > 255) {
+                throw new RuntimeException('Enter a retention reason of up to 255 characters.');
+            }
+            submitStudentRetentionRequest($conn, $studentId, $schoolYear, $teacherId, $retentionReason);
+            $_SESSION['toast'] = ['message' => 'Retention request sent to the administrator for review.', 'type' => 'success'];
+        } else {
+            withdrawStudentRetentionRequest($conn, $studentId, $schoolYear, $teacherId);
+            $_SESSION['toast'] = ['message' => 'Pending retention request withdrawn.', 'type' => 'success'];
+        }
     } catch (RuntimeException $error) {
         $_SESSION['toast'] = ['message'=>$error->getMessage(), 'type'=>'error'];
     }
     header('Location: students.php?' . http_build_query(['grade'=>$grade, 'section'=>$section]));
     exit;
 }
-$retentionFlags = studentRetentionFlags($conn, $schoolYear);
+$retentionRequests = studentRetentionRequestsByStudent($conn, $schoolYear);
 
 $today = date("Y-m-d");
 $stmt = $conn->prepare(
@@ -287,15 +299,29 @@ teacherShell("Students");
               $student["SECTION"],
           ) ?></span></td>
                     <td class="px-5 py-4">
-                        <?php $canRetain = (int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10; $isRetained = !empty($retentionFlags[trim((string) $student['STUDENT_ID'])]); ?>
+                        <?php $canRetain = (int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10; $requestStatus = $retentionRequests[trim((string) $student['STUDENT_ID'])] ?? ''; ?>
                         <?php if ($canRetain): ?>
-                        <form method="post" class="inline">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                            <input type="hidden" name="action" value="toggle_retention">
-                            <input type="hidden" name="student_id" value="<?= htmlspecialchars($student['STUDENT_ID']) ?>">
-                            <input type="hidden" name="retained" value="<?= $isRetained ? '0' : '1' ?>">
-                            <button type="submit" class="rounded-full px-3 py-1 text-xs font-bold <?= $isRetained ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' ?>"><?= $isRetained ? 'Retained · Remove' : 'Mark retained' ?></button>
-                        </form>
+                            <?php if ($requestStatus === 'Approved'): ?>
+                            <span class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">Approved · Retained</span>
+                            <?php elseif ($requestStatus === 'Pending'): ?>
+                            <form method="post" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="action" value="retention_request">
+                                <input type="hidden" name="student_id" value="<?= htmlspecialchars($student['STUDENT_ID']) ?>">
+                                <input type="hidden" name="request_action" value="withdraw">
+                                <button type="submit" class="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">Pending · Withdraw</button>
+                            </form>
+                            <?php else: ?>
+                            <form method="post" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="action" value="retention_request">
+                                <input type="hidden" name="student_id" value="<?= htmlspecialchars($student['STUDENT_ID']) ?>">
+                                <input type="hidden" name="request_action" value="submit">
+                                <input name="retention_reason" required maxlength="255" placeholder="Reason for retention"
+                                    class="mr-1 h-8 w-44 rounded-lg border border-slate-300 px-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                                <button type="submit" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Request retention</button>
+                            </form>
+                            <?php endif; ?>
                         <?php else: ?><span class="text-xs text-slate-400">Grade 7–10 only</span><?php endif; ?>
                     </td>
                     <?php

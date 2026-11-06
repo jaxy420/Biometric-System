@@ -21,6 +21,7 @@ const SCHOOL_CALENDAR_TYPES = [
     'special',     // special instructional schedule / approved makeup class
     'holiday',     // official holiday
     'suspension',  // declared class suspension
+    'vacation',    // school break / school is out
     'no_class',    // other non-instructional date
 ];
 
@@ -110,6 +111,33 @@ function setSchoolCalendarEntry(mysqli $conn, string $date, string $type, string
     return $stmt->execute() === true;
 }
 
+/** Configure every date in an inclusive school-break range as non-instructional. */
+function setSchoolVacationRange(mysqli $conn, string $startDate, string $endDate, string $label = ''): bool
+{
+    $start = DateTimeImmutable::createFromFormat('!Y-m-d', $startDate);
+    $end = DateTimeImmutable::createFromFormat('!Y-m-d', $endDate);
+    if (!$start || !$end || $start->format('Y-m-d') !== $startDate || $end->format('Y-m-d') !== $endDate || $end < $start) {
+        return false;
+    }
+    if ($start->diff($end)->days > 370) {
+        return false;
+    }
+    $label = trim($label) ?: "School's out / Vacation";
+    $conn->begin_transaction();
+    try {
+        for ($date = $start; $date <= $end; $date = $date->modify('+1 day')) {
+            if (!setSchoolCalendarEntry($conn, $date->format('Y-m-d'), 'vacation', $label)) {
+                throw new RuntimeException('Could not save the school-break date.');
+            }
+        }
+        $conn->commit();
+        return true;
+    } catch (Throwable) {
+        $conn->rollback();
+        return false;
+    }
+}
+
 /** Remove an explicit entry, reverting the date to the default weekday rule. */
 function deleteSchoolCalendarEntry(mysqli $conn, string $date): void
 {
@@ -143,6 +171,7 @@ function schoolCalendarTypeLabel(string $type): string
         'special' => 'Special / makeup class',
         'holiday' => 'Holiday',
         'suspension' => 'Class suspension',
+        'vacation' => "School's out / Vacation",
         'no_class' => 'No class',
         'weekend' => 'Weekend',
         default => ucfirst($type),

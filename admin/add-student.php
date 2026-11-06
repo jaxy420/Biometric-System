@@ -62,7 +62,9 @@ adminSidebar(
             <div class="grid gap-5 sm:grid-cols-2">
                 <label class="block text-sm font-bold text-slate-700">LRN<input
                         class="<?= $fieldClass('student_id') ?>"
-                        name="student_id" value="<?= $old('student_id') ?>" placeholder="e.g. 2024-0001" required><?php if (isset($fieldErrors['student_id'])): ?><p class="mt-2 text-xs font-semibold text-rose-600"><?= htmlspecialchars($fieldErrors['student_id']) ?></p><?php endif; ?></label>
+                        type="text" name="student_id" value="<?= $old('student_id') ?>" placeholder="e.g. 123456789012"
+                        inputmode="numeric" autocomplete="off" minlength="12" maxlength="12" pattern="\d{12}"
+                        oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 12);" required><?php if (isset($fieldErrors['student_id'])): ?><p class="mt-2 text-xs font-semibold text-rose-600"><?= htmlspecialchars($fieldErrors['student_id']) ?></p><?php endif; ?></label>
                 <label class="block text-sm font-bold text-slate-700">Grade<select
                         class="<?= $fieldClass('student_section') ?> bg-white"
                         name="grade" onchange="window.updateStudentPlacement && window.updateStudentPlacement()" required>

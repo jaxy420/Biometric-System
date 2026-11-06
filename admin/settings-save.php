@@ -245,13 +245,25 @@ if ($action === "password") {
             "type" => "error",
         ];
     } else {
+        $current = $conn->query("SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1");
+        $previousCapacity = $current ? (int) (($current->fetch_assoc() ?: [])['DEFAULT_CAPACITY'] ?? 0) : 0;
         $up = $conn->prepare(
             "INSERT INTO section_settings (ID,DEFAULT_CAPACITY) VALUES (1,?) ON DUPLICATE KEY UPDATE DEFAULT_CAPACITY=VALUES(DEFAULT_CAPACITY)",
         );
         $up->bind_param("i", $capacity);
         $up->execute();
+        $updatedSections = 0;
+        // Existing sections store a capacity of their own. Treat sections
+        // that still match the old default as inherited, so a default change
+        // is reflected in rollover previews without overwriting custom caps.
+        if ($previousCapacity > 0 && $previousCapacity !== $capacity) {
+            $sync = $conn->prepare("UPDATE sections SET CAPACITY=? WHERE CAPACITY=?");
+            $sync->bind_param("ii", $capacity, $previousCapacity);
+            $sync->execute();
+            $updatedSections = $sync->affected_rows;
+        }
         $_SESSION["toast"] = [
-            "message" => "Default section capacity saved.",
+            "message" => "Default section capacity saved." . ($updatedSections ? " Updated {$updatedSections} sections using the prior default." : ""),
             "type" => "success",
         ];
     }

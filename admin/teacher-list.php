@@ -51,7 +51,7 @@ $teacherCount = $conn->query("SELECT COUNT(*) AS total FROM teachers WHERE $teac
 $totalTeachers = (int) ($teacherCount ? $teacherCount->fetch_assoc()['total'] ?? 0 : 0);
 $teacherOrder = $isArchivedView ? 'ARCHIVED_AT DESC, TEACHER_NAME' : 'TEACHER_NAME';
 $teachers = $conn->query(
-    "SELECT TEACHER_ID, TEACHER_NAME, TEACHER_USER, CREATED_AT, ARCHIVED_AT
+    "SELECT TEACHER_ID, TEACHER_NAME, TEACHER_USER, CREATED_AT, ARCHIVED_AT, ARCHIVE_REASON
      FROM teachers
      WHERE $teacherWhere
      ORDER BY $teacherOrder",
@@ -87,10 +87,15 @@ adminSidebar(
 </div>
 
 <div class="card overflow-hidden">
+    <div class="border-b border-slate-200 p-5">
+        <label for="teacher-search" class="filter-label">Search teachers</label>
+        <input type="search" id="teacher-search" class="field mt-1 h-11" placeholder="Teacher name or username">
+    </div>
     <div class="w-full overflow-x-auto">
         <table class="w-full min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
+                    <th class="px-5 py-4 text-center">#</th>
                     <th class="px-5 py-4">Teacher</th>
                     <th class="px-5 py-4">Username</th>
                     <th class="px-5 py-4"><?= $isArchivedView ? 'Retained assignments' : 'Assigned grades and sections' ?>
@@ -98,6 +103,7 @@ adminSidebar(
                     <th class="px-5 py-4"><?= $isArchivedView ? 'Archived' : 'Created' ?></th>
                     <?php if ($isArchivedView): ?>
                     <th class="px-5 py-4">Status</th>
+                    <th class="px-5 py-4">Archive reason</th>
                     <?php endif; ?>
                     <th class="px-5 py-4"></th>
                 </tr>
@@ -110,7 +116,8 @@ adminSidebar(
                     $advisory = teacherAdvisoryAssignments($conn, (int) $teacher['TEACHER_ID']);
                     $dateValue = $isArchivedView ? ($teacher['ARCHIVED_AT'] ?? '') : ($teacher['CREATED_AT'] ?? '');
                 ?>
-                <tr class="hover:bg-slate-50">
+                <tr class="hover:bg-slate-50" data-teacher-search="<?= htmlspecialchars(strtolower($teacher['TEACHER_NAME'].' '.$teacher['TEACHER_USER']), ENT_QUOTES) ?>">
+                    <td class="teacher-index px-5 py-4 text-center font-semibold text-slate-400"></td>
                     <td class="px-5 py-4 font-bold text-slate-900"><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></td>
                     <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($teacher['TEACHER_USER']) ?></td>
                     <td class="px-5 py-4">
@@ -136,6 +143,7 @@ adminSidebar(
                     <td class="px-5 py-4"><span
                             class="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">Archived</span>
                     </td>
+                    <td class="px-5 py-4 text-sm text-slate-600"><?= htmlspecialchars($teacher['ARCHIVE_REASON'] ?: 'Archived by administrator') ?></td>
                     <?php endif; ?>
                     <td class="px-5 py-4 text-right">
                         <?php if ($isArchivedView): ?>
@@ -160,13 +168,19 @@ adminSidebar(
                         <a href="edit-teacher.php?id=<?= (int) $teacher['TEACHER_ID'] ?>"
                             class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20">Open
                             profile</a>
+                        <form action="delete-teacher.php" method="post" class="inline" onsubmit="return confirm('Archive this teacher account?');">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                            <input type="hidden" name="id" value="<?= (int) $teacher['TEACHER_ID'] ?>">
+                            <input type="hidden" name="archive_reason" value="Archived by administrator">
+                            <button type="submit" class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-500/20">Archive</button>
+                        </form>
                         <?php endif; ?>
                     </td>
                 </tr>
                 <?php endwhile; ?>
                 <?php else: ?>
                 <tr>
-                    <td colspan="<?= $isArchivedView ? 6 : 5 ?>" class="px-5 py-12 text-center text-slate-500">
+                    <td colspan="<?= $isArchivedView ? 8 : 6 ?>" class="px-5 py-12 text-center text-slate-500">
                         <?= $isArchivedView ? 'No archived teacher accounts.' : 'No teacher accounts yet. Add the first teacher to get started.' ?>
                     </td>
                 </tr>
@@ -206,12 +220,18 @@ adminSidebar(
         const card = rows.closest('.overflow-hidden'),
             bottom = document.createElement('div');
         card?.insertAdjacentElement('afterend', bottom);
-        createTablePagination({
+        let teacherSearch = '';
+        const teacherPager = createTablePagination({
             rows,
             pager: bottom,
             label: '<?= $isArchivedView ? 'archived teacher accounts' : 'teacher accounts' ?>',
             perPage: <?= $limit ?>,
-            total: <?= $totalTeachers ?>
+            total: <?= $totalTeachers ?>,
+            filterRows: row => !teacherSearch || (row.dataset.teacherSearch || '').includes(teacherSearch)
+        });
+        document.getElementById('teacher-search')?.addEventListener('input', event => {
+            teacherSearch = event.currentTarget.value.trim().toLowerCase();
+            teacherPager.refresh(true);
         });
 
         const modal = document.getElementById('advisory-search-modal');

@@ -11,37 +11,16 @@ require 'page-guard.php';
 require '../includes/csrf-token.php';
 require 'components.php';
 
-$setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
-$schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_retention') {
-    try {
-        if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
-            throw new RuntimeException('The retention request expired. Refresh and try again.');
-        }
-        $studentId = trim((string) ($_POST['student_id'] ?? ''));
-        $retained = (string) ($_POST['retained'] ?? '') === '1';
-        $eligible = $conn->prepare("SELECT STUDENT_ID FROM students WHERE STUDENT_ID=? AND ENROLLMENT_STATUS='Enrolled'
-            AND COALESCE(IS_ARCHIVED,0)=0 AND GRADE BETWEEN 7 AND 10 LIMIT 1");
-        $eligible->bind_param('s', $studentId);
-        $eligible->execute();
-        if (!$eligible->get_result()->fetch_assoc()) throw new RuntimeException('Only enrolled Grade 7–10 students can be marked Retained.');
-        setStudentRetentionFlag($conn, $studentId, $schoolYear, $retained);
-        $_SESSION['toast'] = ['message'=>$retained ? 'Student marked Retained for the active school year.' : 'Retention flag removed; rollover will recalculate the outcome.', 'type'=>'success'];
-    } catch (RuntimeException $error) {
-        $_SESSION['toast'] = ['message'=>$error->getMessage(), 'type'=>'error'];
-    }
-    header('Location: student-list.php?view=active');
-    exit;
-}
-$retentionFlags = studentRetentionFlags($conn, $schoolYear);
-
 $limit = 15;
 $today = date('Y-m-d');
 $view = strtolower(trim((string) ($_GET['view'] ?? 'active')));
-if (!in_array($view, ['active', 'archived'], true)) {
+if (!in_array($view, ['active', 'archived', 'retention'], true)) {
     $view = 'active';
 }
 $isArchivedView = $view === 'archived';
+$isRetentionView = $view === 'retention';
+$setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
+$schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
 
 // One page now owns both rosters. The two predicates are deliberately exact so
 // the list, the SQL count, and the pager always report the same records.
@@ -50,11 +29,32 @@ $isArchivedView = $view === 'archived';
 // marker for both manual archives and year-end graduation.
 $studentWhere = $isArchivedView
     ? "(s.ENROLLMENT_STATUS IN ('Archived','Graduated') OR COALESCE(s.STUDENT_STATUS,'Active')='Archived')"
-    : "(COALESCE(NULLIF(s.ENROLLMENT_STATUS,''),'Enrolled') NOT IN ('Archived','Graduated','Transferred','Dropped') AND COALESCE(s.STUDENT_STATUS,'Active')<>'Archived')";
+    : "(COALESCE(NULLIF(s.ENROLLMENT_STATUS,''),'Enrolled') NOT IN ('Archived','Graduated','Transferred','Dropped','Kickout') AND COALESCE(s.STUDENT_STATUS,'Active')<>'Archived')";
 
-$countStmt = $conn->prepare("SELECT COUNT(*) AS total FROM students s WHERE $studentWhere");
-$countStmt->execute();
-$totalStudents = (int) ($countStmt->get_result()->fetch_assoc()['total'] ?? 0);
+$totalStudents = 0;
+if ($isRetentionView) {
+    $stmt = $conn->prepare("SELECT s.*, rq.REQUESTED_AT, rq.REQUESTED_BY, rq.REQUEST_REASON,
+            COALESCE(academic.academic_records,0) AS academic_records,
+            COALESCE(academic.failed_subjects,0) AS failed_subjects,
+            academic.academic_summary
+        FROM student_retention_requests rq
+        JOIN students s ON TRIM(s.STUDENT_ID)=TRIM(rq.STUDENT_ID)
+        LEFT JOIN (
+            SELECT STUDENT_ID,SCHOOL_YEAR,COUNT(SUBJECT) AS academic_records,
+                SUM(CASE WHEN RESULT='Failed' OR (FINAL_GRADE IS NOT NULL AND FINAL_GRADE < 75) THEN 1 ELSE 0 END) AS failed_subjects,
+                GROUP_CONCAT(CONCAT(SUBJECT, ': ', COALESCE(FINAL_GRADE, '—'), ' · ', COALESCE(NULLIF(RESULT,''), 'Not graded')) ORDER BY SUBJECT SEPARATOR ' | ') AS academic_summary
+            FROM student_subject_results WHERE SCHOOL_YEAR=? GROUP BY STUDENT_ID,SCHOOL_YEAR
+        ) academic ON TRIM(academic.STUDENT_ID)=TRIM(s.STUDENT_ID) AND academic.SCHOOL_YEAR=rq.SCHOOL_YEAR
+        WHERE rq.SCHOOL_YEAR=? AND rq.STATUS='Pending' AND $studentWhere
+        ORDER BY rq.REQUESTED_AT ASC,s.LAST_NAME,s.FIRST_NAME");
+    $stmt->bind_param('ss', $schoolYear, $schoolYear);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $totalStudents = $result->num_rows;
+} else {
+    $countStmt = $conn->prepare("SELECT COUNT(*) AS total FROM students s WHERE $studentWhere");
+    $countStmt->execute();
+    $totalStudents = (int) ($countStmt->get_result()->fetch_assoc()['total'] ?? 0);
 
 if ($isArchivedView) {
     $stmt = $conn->prepare(
@@ -76,6 +76,7 @@ if ($isArchivedView) {
 }
 $stmt->execute();
 $result = $stmt->get_result();
+}
 
 // One active, ordered catalog supplies PHP options and browser filters.
 $sectionCatalog = studentSectionPlacementOptions($conn);
@@ -84,7 +85,7 @@ $honorSectionMap = promotionHonorSectionMap($conn);
 
 // Archived status remains available only in the archived roster.
 $statusItems = $isArchivedView
-    ? [['value'=>'','label'=>'All'],['value'=>'Graduated','label'=>'Graduated'],['value'=>'Transferred','label'=>'Transferred'],['value'=>'Dropped','label'=>'Dropped']]
+    ? [['value'=>'','label'=>'All'],['value'=>'Graduated','label'=>'Graduated'],['value'=>'Transferred','label'=>'Transferred'],['value'=>'Dropped','label'=>'Dropped'],['value'=>'Kickout','label'=>'Kickout']]
     : [['value'=>'','label'=>'All Statuses'],['value'=>'Enrolled','label'=>'Enrolled']];
 
 $gradeItems = [['value' => '', 'label' => 'All Grades']];
@@ -96,6 +97,7 @@ $statusClassMap = [
     'Enrolled' => 'bg-emerald-50 text-emerald-700',
     'Transferred' => 'bg-blue-50 text-blue-700',
     'Dropped' => 'bg-rose-50 text-rose-700',
+    'Kickout' => 'bg-orange-50 text-orange-700',
     'Graduated' => 'bg-violet-50 text-violet-700',
     'Archived' => 'bg-amber-50 text-amber-700',
 ];
@@ -103,29 +105,31 @@ $statusClassMap = [
 $viewPillActive = 'rounded-full bg-blue-600 text-white font-black text-sm px-4 py-2 shadow-md transition-all';
 $viewPillInactive = 'rounded-full text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-bold text-sm px-4 py-2 transition-all';
 $viewToggle = '<nav class="inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900/90" aria-label="Student records view">'
-    . '<a href="student-list.php?view=active" class="' . ($isArchivedView ? $viewPillInactive : $viewPillActive) . '"'
-    . (!$isArchivedView ? ' aria-current="page"' : '') . '>Active</a>'
+    . '<a href="student-list.php?view=active" class="' . (!$isArchivedView && !$isRetentionView ? $viewPillActive : $viewPillInactive) . '"'
+    . (!$isArchivedView && !$isRetentionView ? ' aria-current="page"' : '') . '>Active</a>'
+    . '<a href="student-list.php?view=retention" class="' . ($isRetentionView ? $viewPillActive : $viewPillInactive) . '"'
+    . ($isRetentionView ? ' aria-current="page"' : '') . '>Retention</a>'
     . '<a href="student-list.php?view=archived" class="' . ($isArchivedView ? $viewPillActive : $viewPillInactive) . '"'
     . ($isArchivedView ? ' aria-current="page"' : '') . '>Archived</a>'
     . '</nav>';
 
-adminHead($isArchivedView ? 'Archived students' : 'Students');
+adminHead($isRetentionView ? 'Retention review' : ($isArchivedView ? 'Archived students' : 'Students'));
 adminSidebar(
     'students',
-    $isArchivedView ? 'Archived students' : 'Students',
-    $isArchivedView ? 'Archived student records' : 'Search profiles and filter by grade or section',
+    $isRetentionView ? 'Retention review' : ($isArchivedView ? 'Archived students' : 'Students'),
+    $isRetentionView ? 'Review advisory requests against academic records' : ($isArchivedView ? 'Archived student records' : 'Search profiles and filter by grade or section'),
 );
 ?>
-<div class="w-full flex-1 min-w-0 max-w-full space-y-6">
+<div class="w-full flex-1 min-w-0 max-w-full space-y-6"<?= $isRetentionView ? ' data-retention-pending-count="' . $totalStudents . '"' : '' ?>>
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <p class="text-sm font-semibold text-slate-500">
-            <?= $totalStudents ?> <?= $isArchivedView ? 'archived' : 'active' ?>
-            student<?= $totalStudents === 1 ? '' : 's' ?>
+            <?= $totalStudents ?> <?= $isRetentionView ? 'pending retention request' : ($isArchivedView ? 'archived' : 'active') ?>
+            <?= $isRetentionView ? ($totalStudents === 1 ? '' : 's') : 'student' . ($totalStudents === 1 ? '' : 's') ?>
         </p>
         <?= $viewToggle ?>
     </div>
-    <?php if (!$isArchivedView): ?>
+    <?php if (!$isArchivedView && !$isRetentionView): ?>
     <div class="flex flex-col gap-3 sm:flex-row">
         <a href="import-students.php" class="btn btn-success"
             aria-label="Import students from a CSV or Excel spreadsheet"><?= icon('upload') ?> Import CSV / Excel</a>
@@ -175,7 +179,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                     <option value="">All Sections</option>
                 </select>
             </div>
-            <div class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
+            <?php if (!$isRetentionView): ?><div class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
                 <?php if ($isArchivedView): ?>
                 <p class="filter-label">Archive category</p>
                 <div class="filter-pills" role="group" aria-label="Filter archived students by category"
@@ -199,7 +203,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                     <?php endforeach; ?>
                 </select>
                 <?php endif; ?>
-            </div>
+            </div><?php endif; ?>
             <div id="strand-filter-container" class="table-filter-control w-full min-w-0 flex-1 sm:min-w-[12rem]" hidden>
                 <label for="strand-filter" class="filter-label">Strand</label>
                 <select id="strand-filter" class="field h-11" disabled>
@@ -223,44 +227,57 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
 </div>
 
 <div class="w-full overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-        <table class="w-full text-left border-collapse text-sm">
+        <table class="min-w-[1100px] w-full text-left border-collapse text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                    <th class="w-12 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-400">#</th>
-                    <th class="px-5 py-4">Student</th>
-                    <th class="px-5 py-4">LRN</th>
-                    <th class="px-5 py-4">Grade</th>
-                    <th class="px-5 py-4">Section</th>
-                    <?php if ($isArchivedView): ?>
-                    <th class="px-5 py-4">Attendance records</th>
-                    <th class="px-5 py-4">Status</th>
+                    <th class="w-12 whitespace-nowrap px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-400">#</th>
+                    <?php if ($isRetentionView): ?>
+                    <th class="whitespace-nowrap px-5 py-4">LRN</th>
+                    <th class="whitespace-nowrap px-5 py-4">Student</th>
                     <?php else: ?>
-                    <th class="px-5 py-4">Status</th>
-                    <th class="px-5 py-4">Retention</th>
-                    <th class="px-5 py-4">Today</th>
+                    <th class="whitespace-nowrap px-5 py-4">Student</th>
+                    <th class="whitespace-nowrap px-5 py-4">LRN</th>
                     <?php endif; ?>
-                    <th class="px-5 py-4"></th>
+                    <th class="whitespace-nowrap px-5 py-4">Grade</th>
+                    <th class="whitespace-nowrap px-5 py-4">Section</th>
+                    <?php if ($isRetentionView): ?>
+                    <th class="whitespace-nowrap px-5 py-4">Academic records</th>
+                    <th class="whitespace-nowrap px-5 py-4">Adviser reason</th>
+                    <th class="whitespace-nowrap px-5 py-4">Retention</th>
+                    <?php elseif ($isArchivedView): ?>
+                    <th class="whitespace-nowrap px-5 py-4">Attendance records</th>
+                    <th class="whitespace-nowrap px-5 py-4">Status</th>
+                    <th class="whitespace-nowrap px-5 py-4">Archive reason</th>
+                    <?php else: ?>
+                    <th class="whitespace-nowrap px-5 py-4">Status</th>
+                    <th class="whitespace-nowrap px-5 py-4">Today</th>
+                    <?php endif; ?>
+                    <th class="whitespace-nowrap px-5 py-4"></th>
                 </tr>
             </thead>
             <tbody id="student-rows" class="divide-y divide-slate-100" data-page-size="<?= $limit ?>"
                 data-total="<?= $totalStudents ?>"
                 data-honor-sections="<?= htmlspecialchars(json_encode($honorSectionMap), ENT_QUOTES) ?>"
                 data-section-catalog="<?= htmlspecialchars(json_encode($sectionCatalog), ENT_QUOTES) ?>"
-                <?php if (!$isArchivedView): ?>data-empty-action-url="add-student.php"
+                <?php if (!$isArchivedView && !$isRetentionView): ?>data-empty-action-url="add-student.php"
                 data-empty-title="No students have been added yet."
-                data-empty-detail="Add a student or import a class list to begin."<?php else: ?>
+                data-empty-detail="Add a student or import a class list to begin."<?php elseif ($isRetentionView): ?>
+                data-empty-title="No pending retention requests."
+                data-empty-detail="Requests submitted by advisory teachers will appear here for review."<?php else: ?>
                 data-empty-title="No archived students."
                 data-empty-detail="Profiles archived from the active roster will appear here."<?php endif; ?>>
                 <?php while ($row = $result->fetch_assoc()): ?>
                 <?php
                     $displayName = trim(($row['LAST_NAME'] ?? '') . ', ' . ($row['FIRST_NAME'] ?? '') . (!empty($row['MIDDLE_NAME']) ? ', ' . $row['MIDDLE_NAME'] : ''), ', ') ?: $row['STUDENT_NAME'];
                     $archiveReason = trim((string) ($row['ARCHIVE_REASON'] ?? ''));
-                    if ($isArchivedView) {
+                    if ($isRetentionView) {
+                        $rowStatus = 'Pending';
+                    } elseif ($isArchivedView) {
                         $rowStatus = match (true) {
-                            stripos($archiveReason, 'graduat') !== false => 'Graduated',
+                            ($row['ENROLLMENT_STATUS'] ?? '') === 'Graduated' => 'Graduated',
                             stripos($archiveReason, 'transfer') !== false => 'Transferred',
                             stripos($archiveReason, 'drop') !== false => 'Dropped',
-                            stripos($archiveReason, 'enroll') !== false => 'Enrolled',
+                            stripos($archiveReason, 'kickout') !== false || stripos($archiveReason, 'kicked out') !== false => 'Kickout',
                             default => 'Archived',
                         };
                     } else {
@@ -273,25 +290,59 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                     data-strand="<?= htmlspecialchars($row['STRAND'] ?? '') ?>"
                     data-status="<?= htmlspecialchars($rowStatus) ?>"
                     data-search="<?= htmlspecialchars($displayName . ' ' . $row['STUDENT_ID'], ENT_QUOTES) ?>">
-                    <td class="student-index w-12 px-4 py-3 text-center text-sm font-semibold text-slate-400"></td>
-                    <td class="px-5 py-4">
+                    <td class="student-index w-12 whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-slate-400"></td>
+                    <?php if ($isRetentionView): ?>
+                    <td class="whitespace-nowrap px-5 py-4 text-slate-600"><?= htmlspecialchars($row['STUDENT_ID']) ?></td>
+                    <td class="whitespace-nowrap px-5 py-4">
                         <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>"
                                 alt="" class="h-10 w-10 rounded-full object-cover"><span
                                 class="font-bold text-slate-900"><?= htmlspecialchars($displayName) ?></span></div>
                     </td>
-                    <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($row['STUDENT_ID']) ?></td>
-                    <td class="px-5 py-4"><span
-                            class="rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700">Grade
+                    <?php else: ?>
+                    <td class="whitespace-nowrap px-5 py-4">
+                        <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>"
+                                alt="" class="h-10 w-10 rounded-full object-cover"><span
+                                class="font-bold text-slate-900"><?= htmlspecialchars($displayName) ?></span></div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-slate-600"><?= htmlspecialchars($row['STUDENT_ID']) ?></td>
+                    <?php endif; ?>
+                    <td class="whitespace-nowrap px-5 py-4"><span
+                            class="inline-flex whitespace-nowrap rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700">Grade
                             <?= htmlspecialchars($row['GRADE'] ?? '—') ?></span></td>
-                    <td class="px-5 py-4"><span
+                    <td class="whitespace-nowrap px-5 py-4"><span
                             class="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700"><?= htmlspecialchars($row['SECTION'] ?? 'N/A') ?></span>
                     </td>
-                    <?php if ($isArchivedView): ?>
-                    <td class="px-5 py-4 font-bold text-slate-700"><?= (int) $row['attendance_records'] ?></td>
-                    <td class="px-5 py-4"><span class="rounded-full px-3 py-1 font-bold <?= $rowStatusClass ?>"
+                    <?php if ($isRetentionView): ?>
+                    <td class="px-5 py-4">
+                        <p class="max-w-md text-xs font-semibold text-slate-700" title="<?= htmlspecialchars((string) ($row['academic_summary'] ?? 'No grades recorded')) ?>">
+                            <?= htmlspecialchars((string) ($row['academic_summary'] ?? 'No grades recorded')) ?>
+                        </p>
+                        <a class="mt-1 inline-flex text-xs font-bold text-blue-700 hover:text-blue-900" href="edit-student.php?id=<?= (int) $row['ID'] ?>&tab=academic">View academic records</a>
+                    </td>
+                    <td class="px-5 py-4 text-sm text-slate-700"><?= htmlspecialchars((string) ($row['REQUEST_REASON'] ?? '')) ?></td>
+                    <td class="whitespace-nowrap px-5 py-4">
+                        <div class="flex items-center gap-2">
+                            <form method="post" action="review-retention.php" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="student_id" value="<?= htmlspecialchars($row['STUDENT_ID']) ?>">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white transition hover:bg-rose-700">Mark retained</button>
+                            </form>
+                            <form method="post" action="review-retention.php" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="student_id" value="<?= htmlspecialchars($row['STUDENT_ID']) ?>">
+                                <input type="hidden" name="action" value="decline">
+                                <button type="submit" class="inline-flex h-8 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400">Decline</button>
+                            </form>
+                        </div>
+                    </td>
+                    <?php elseif ($isArchivedView): ?>
+                    <td class="whitespace-nowrap px-5 py-4 font-bold text-slate-700"><?= (int) $row['attendance_records'] ?></td>
+                    <td class="whitespace-nowrap px-5 py-4"><span class="rounded-full px-3 py-1 font-bold <?= $rowStatusClass ?>"
                             title="<?= htmlspecialchars($archiveReason ?: 'Archived') ?>"><?= htmlspecialchars($rowStatus) ?></span>
                     </td>
-                    <td class="px-5 py-4 text-right">
+                    <td class="px-5 py-4 text-sm text-slate-600"><?= htmlspecialchars($archiveReason ?: 'Archived') ?></td>
+                    <td class="whitespace-nowrap px-5 py-4 text-right">
                         <div class="flex flex-wrap justify-end gap-2">
                             <a class="btn btn-secondary inline-flex h-7 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-2.5 py-0 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
                                 href="archived-student-record.php?id=<?= (int) $row['ID'] ?>">Open record</a>
@@ -307,29 +358,17 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                         </div>
                     </td>
                     <?php else: ?>
-                    <td class="px-5 py-4"><span
-                            class="rounded-full px-3 py-1 font-bold <?= $rowStatusClass ?>"><?= htmlspecialchars($rowStatus) ?></span>
-                    </td>
-                    <td class="px-5 py-4">
-                        <?php $canRetain = (int) $row['GRADE'] >= 7 && (int) $row['GRADE'] <= 10; $isRetained = !empty($retentionFlags[trim((string) $row['STUDENT_ID'])]); ?>
-                        <?php if ($canRetain): ?>
-                        <form method="post" class="inline">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                            <input type="hidden" name="action" value="toggle_retention">
-                            <input type="hidden" name="student_id" value="<?= htmlspecialchars($row['STUDENT_ID']) ?>">
-                            <input type="hidden" name="retained" value="<?= $isRetained ? '0' : '1' ?>">
-                            <button type="submit" class="rounded-full px-3 py-1 text-xs font-bold <?= $isRetained ? 'bg-rose-500/10 text-rose-700' : 'bg-slate-100 text-slate-600' ?>"><?= $isRetained ? 'Retained · Remove' : 'Mark retained' ?></button>
-                        </form>
-                        <?php else: ?><span class="text-xs text-slate-400">Grade 7–10 only</span><?php endif; ?>
+                    <td class="whitespace-nowrap px-5 py-4"><span
+                            class="inline-flex whitespace-nowrap rounded-full px-3 py-1 font-bold <?= $rowStatusClass ?>"><?= htmlspecialchars($rowStatus) ?></span>
                     </td>
                     <?php
                         $todayLabel = ($row['attendance_remark'] ?? '') === 'Absent' ? 'Absent' : ($row['attended_today'] ? 'Present' : 'Not recorded');
                         $todayClass = $todayLabel === 'Absent' ? 'bg-rose-50 text-rose-700' : ($todayLabel === 'Present' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700');
                     ?>
-                    <td class="px-5 py-4"><span
-                            class="rounded-full px-3 py-1 font-bold <?= $todayClass ?>"><?= $todayLabel ?></span></td>
-                    <td class="px-5 py-4 text-right"><a
-                            class="btn btn-secondary inline-flex h-7 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-2.5 py-0 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
+                    <td class="whitespace-nowrap px-5 py-4"><span
+                            class="inline-flex whitespace-nowrap rounded-full px-3 py-1 font-bold <?= $todayClass ?>"><?= $todayLabel ?></span></td>
+                    <td class="whitespace-nowrap px-5 py-4 text-right"><a
+                            class="btn btn-secondary inline-flex h-7 whitespace-nowrap items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-2.5 py-0 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
                             href="edit-student.php?id=<?= (int) $row['ID'] ?>">Open profile</a></td>
                     <?php endif; ?>
                 </tr>
@@ -339,5 +378,24 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
     </div>
 </div>
 <script src="../js/capsule-control.js?v=3"></script>
-<script src="../js/student-pagination.js?v=18"></script>
+<script src="../js/student-pagination.js?v=20"></script>
+<?php if ($isRetentionView): ?>
+<script>
+(() => {
+    const queue = document.querySelector('[data-retention-pending-count]');
+    if (!queue) return;
+    let knownCount = Number(queue.dataset.retentionPendingCount || 0);
+    window.setInterval(async () => {
+        try {
+            const response = await fetch('retention-pending-count.php', { credentials: 'same-origin', cache: 'no-store' });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (Number(payload.pending) !== knownCount) window.location.reload();
+        } catch (_) {
+            // A temporary network error should never interrupt retention review.
+        }
+    }, 8000);
+})();
+</script>
+<?php endif; ?>
 <?php adminFoot(); ?>

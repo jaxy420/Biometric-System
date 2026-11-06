@@ -31,10 +31,14 @@
   const perPage = Number(rowsContainer.dataset.pageSize) || 15;
   const sqlTotal = Number(rowsContainer.dataset.total) || 0;
   let currentPage = 1;
-  const tableCard = rowsContainer.closest('.overflow-hidden');
+  // The admin roster table is wrapped by an overflow-x-auto container. The
+  // former overflow-hidden selector no longer exists there, which meant the
+  // pager was created but never inserted into the page.
+  const tableCard = rowsContainer.closest('.overflow-x-auto');
+  if (!tableCard) return;
   const bottomPager = document.createElement('nav');
   bottomPager.setAttribute('aria-label', 'Student list pagination');
-  tableCard?.insertAdjacentElement('afterend', bottomPager);
+  tableCard.insertAdjacentElement('afterend', bottomPager);
   const pagers = [bottomPager];
   const emptyState = document.createElement('tr');
   emptyState.hidden = true;

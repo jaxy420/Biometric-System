@@ -21,11 +21,11 @@ try {
     $posted=$_POST['plans'] ?? [];
     if (!is_array($posted)) throw new RuntimeException('Choose valid promotion targets.');
     $targets=promotionValidatedTargets($posted);
-    $choices=['outcomes'=>$_POST['outcomes'] ?? [],'strand_choices'=>$_POST['strand_choices'] ?? []];
-    if (!is_array($choices['outcomes']) || !is_array($choices['strand_choices'])) throw new RuntimeException('Choose valid rollover outcomes and Grade 11 strands.');
+    $choices=['outcomes'=>$_POST['outcomes'] ?? [],'archive_reasons'=>$_POST['archive_reasons'] ?? [],'strand_choices'=>$_POST['strand_choices'] ?? []];
+    if (!is_array($choices['outcomes']) || !is_array($choices['archive_reasons']) || !is_array($choices['strand_choices'])) throw new RuntimeException('Choose valid rollover outcomes and Grade 11 strands.');
     $result=executePromotionRollover($conn,(string)($_POST['expected_school_year'] ?? ''),$targets,$choices,(string)($_POST['preview_fingerprint'] ?? ''),$_SESSION['admin-user']);
     $s=$result['summary'];
-    $_SESSION['toast']=['message'=>"Rollover complete: {$s['promoted']} promoted ({$s['honor']} honor; {$s['regular']} regular), {$s['retained']} retained, {$s['remedial']} remedial, {$s['graduated']} graduated, {$s['transferred']} transferred and {$s['dropped']} dropped archived. Active school year: {$result['next_year']}.",'type'=>'success'];
+    $_SESSION['toast']=['message'=>"Rollover complete: {$s['promoted']} promoted ({$s['honor']} honor; {$s['regular']} regular), {$s['retained']} retained, {$s['remedial']} remedial, {$s['graduated']} graduated, {$s['transferred']} transferred, {$s['dropped']} dropped, and {$s['kickout']} kicked out archived. Active school year: {$result['next_year']}.",'type'=>'success'];
 } catch (mysqli_sql_exception $error) {
     error_log('Rollover database failure: '.$error->getMessage());
     rolloverFail('Rollover failed. The transaction was rolled back; student placements and school-year history were not changed.');

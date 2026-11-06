@@ -5,11 +5,13 @@ if (!defined("MOBILE_API_AUTHENTICATED")) {
 require_once __DIR__ . "/../config/db_conn.php";
 require_once __DIR__ . "/../includes/student-profile-schema.php";
 require_once __DIR__ . "/../includes/attendance-schema.php";
+require_once __DIR__ . "/../includes/school-calendar-schema.php";
 ensureStudentProfileColumns($conn);
 require_once __DIR__ . '/../includes/student-face-references.php';
 $studentFaceReferences = recognitionStudentReferences($conn);
 ensureAttendanceTimeOutColumn($conn);
 ensureAttendanceSnapshotColumns($conn);
+ensureSchoolCalendarSchema($conn);
 require_once __DIR__ . '/../includes/attendance-scan-events-schema.php';
 ensureAttendanceScanEventsSchema($conn);
 // Opportunistic, bounded retention for unsuccessful attempts only.
@@ -22,6 +24,17 @@ $scanSource = defined('MOBILE_API_AUTHENTICATED') ? 'mobile' : 'webcam';
 $scannerId = defined('MOBILE_API_AUTHENTICATED') ? (string) ($_SESSION['scanner_id'] ?? '') : '';
 $scannerName = defined('MOBILE_API_AUTHENTICATED') ? (string) ($_SESSION['scanner_name'] ?? '') : 'Webcam';
 header("Content-Type: application/json");
+$todaySchoolDay = schoolDayInfo($conn, date('Y-m-d'));
+if (!$todaySchoolDay['is_school_day']) {
+    $reason = $todaySchoolDay['label'] ?: schoolCalendarTypeLabel($todaySchoolDay['type']);
+    echo json_encode([
+        "match" => false,
+        "faces" => [],
+        "matches" => [],
+        "message" => "Attendance is unavailable today: " . $reason . ".",
+    ]);
+    exit();
+}
 $imagePath = "";
 $removeImage = false;
 $upload = $_FILES["frame"] ?? null;

@@ -30,11 +30,18 @@ function ensureStudentProfileColumns(mysqli $conn): void
     if (!isset($columns['ADDRESS'])) $conn->query("ALTER TABLE students ADD COLUMN ADDRESS VARCHAR(255) NOT NULL DEFAULT '' AFTER STRAND");
     if (!isset($columns['ENROLLMENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN ENROLLMENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Enrolled' AFTER SECTION");
     if (!isset($columns['STUDENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN STUDENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Active' AFTER ENROLLMENT_STATUS");
-    if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(40) NOT NULL DEFAULT '' AFTER STUDENT_STATUS");
+    if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(255) NOT NULL DEFAULT '' AFTER STUDENT_STATUS");
+    else $conn->query("ALTER TABLE students MODIFY ARCHIVE_REASON VARCHAR(255) NOT NULL DEFAULT ''");
     if (!isset($columns['ARCHIVED_AT'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER ARCHIVE_REASON");
-    // Graduation is performed only by the year-end rollover. Keep the explicit
-    // ENROLLMENT_STATUS='Graduated' marker while the profile is archived.
-    $conn->query("UPDATE students SET STUDENT_STATUS='Archived', ARCHIVE_REASON=IF(ARCHIVE_REASON='','Graduated',ARCHIVE_REASON), ARCHIVED_AT=COALESCE(ARCHIVED_AT, NOW()) WHERE ENROLLMENT_STATUS IN ('Graduated','Archived') AND STUDENT_STATUS<>'Archived'");
+    if (!isset($columns['IS_ARCHIVED'])) $conn->query("ALTER TABLE students ADD COLUMN IS_ARCHIVED TINYINT(1) NOT NULL DEFAULT 0 AFTER ARCHIVED_AT");
+    // Graduation is performed only by the year-end rollover. A general
+    // archived profile must never inherit the Graduated reason merely because
+    // it is stored outside the active roster.
+    $conn->query("UPDATE students SET STUDENT_STATUS='Archived', IS_ARCHIVED=1, ARCHIVE_REASON=IF(ARCHIVE_REASON='',IF(ENROLLMENT_STATUS='Graduated','Graduated',ENROLLMENT_STATUS),ARCHIVE_REASON), ARCHIVED_AT=COALESCE(ARCHIVED_AT, NOW()) WHERE ENROLLMENT_STATUS IN ('Graduated','Archived','Transferred','Dropped','Kickout') AND (STUDENT_STATUS<>'Archived' OR IS_ARCHIVED=0 OR ARCHIVE_REASON='')");
+    // Repair records created by the former migration: only Grade 12 learners
+    // can graduate, so an archived Grade 7–11 record labelled Graduated is a
+    // manual archive, not a completed senior-high record.
+    $conn->query("UPDATE students SET ARCHIVE_REASON='Manual archive' WHERE GRADE<12 AND ENROLLMENT_STATUS='Archived' AND ARCHIVE_REASON='Graduated'");
 
     $students = $conn->query("SELECT ID, STUDENT_NAME FROM students WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update = $conn->prepare('UPDATE students SET FIRST_NAME=?, LAST_NAME=? WHERE ID=?');
@@ -54,7 +61,10 @@ function isValidStudentAge(int $age): bool
 
 function studentEnrollmentStatuses(): array
 {
-    return ['Enrolled', 'Transferred', 'Dropped', 'Archived', 'Graduated'];
+    // Archival and graduation are controlled actions, not enrollment choices.
+    // An administrator archives a profile separately; year-end rollover records
+    // graduation only for eligible Grade 12 learners.
+    return ['Enrolled', 'Transferred', 'Dropped', 'Kickout'];
 }
 
 function isValidStudentEnrollmentStatus(string $status): bool

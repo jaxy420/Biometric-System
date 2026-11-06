@@ -303,14 +303,14 @@ teacherShell("Grading");
             <table class="w-full min-w-[980px] text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
                     <tr>
-                        <th class="px-5 py-4">Student</th>
-                        <th class="px-5 py-4">LRN</th>
+                        <th class="whitespace-nowrap px-5 py-4">Student</th>
+                        <th class="whitespace-nowrap px-5 py-4">LRN</th>
                         <?php foreach ([1 => 'Q1', 2 => 'Q2', 3 => 'Q3', 4 => 'Q4'] as $quarterValue => $quarterLabel): ?>
-                        <th class="px-3 py-4 text-center" data-quarter-head="<?= $quarterValue ?>"><?= $quarterLabel ?></th>
+                        <th class="whitespace-nowrap px-3 py-4 text-center" data-quarter-head="<?= $quarterValue ?>"><?= $quarterLabel ?></th>
                         <?php endforeach; ?>
-                        <th class="px-3 py-4 text-center">Final</th>
-                        <th class="px-3 py-4 text-center">Remark</th>
-                        <th class="px-5 py-4 text-right">Action</th>
+                        <th class="whitespace-nowrap px-3 py-4 text-center">Final</th>
+                        <th class="whitespace-nowrap px-3 py-4 text-center">Remark</th>
+                        <th class="whitespace-nowrap px-5 py-4 text-right">Action</th>
                     </tr>
                 </thead>
                 <tbody id="student-rows" data-page-size="15" class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -329,16 +329,16 @@ teacherShell("Grading");
                     ?>
                     <tr data-grade-row data-roster-student-id="<?= (int) $student['ID'] ?>" data-search="<?= htmlspecialchars($displayName . ' ' . $student['STUDENT_ID'], ENT_QUOTES) ?>" data-student-id="<?= (int) $student['ID'] ?>"
                         class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td class="px-5 py-4">
+                        <td class="whitespace-nowrap px-5 py-4">
                             <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars(
               $student["IMAGE_PATH"],
           ) ?>" alt="" class="h-9 w-9 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"><span class="font-bold text-slate-900 dark:text-white"><?= htmlspecialchars(
     $displayName,
 ) ?></span></div>
                         </td>
-                        <td class="px-5 py-4 text-slate-600 dark:text-slate-400"><?= htmlspecialchars($student['STUDENT_ID']) ?></td>
+                        <td class="whitespace-nowrap px-5 py-4 text-slate-600 dark:text-slate-400"><?= htmlspecialchars($student['STUDENT_ID']) ?></td>
                         <?php foreach ([1, 2, 3, 4] as $quarterValue): ?>
-                        <td class="px-2 py-3 text-center <?= $quarterValue === $activeQuarter ? 'is-active-quarter' : '' ?>"
+                        <td class="whitespace-nowrap px-2 py-3 text-center <?= $quarterValue === $activeQuarter ? 'is-active-quarter' : '' ?>"
                             data-quarter="<?= $quarterValue ?>">
                             <input type="number" name="q<?= $quarterValue ?>[<?= (int) $student['ID'] ?>]"
                                 value="<?= htmlspecialchars($displayGradeValue($quarters[$quarterValue])) ?>"
@@ -350,16 +350,16 @@ teacherShell("Grading");
                                 class="w-16 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-center text-sm font-bold focus:ring-2 focus:ring-blue-500">
                         </td>
                         <?php endforeach; ?>
-                        <td class="px-3 py-4 text-center text-base font-black text-slate-900 dark:text-white" data-final>
+                        <td class="whitespace-nowrap px-3 py-4 text-center text-base font-black text-slate-900 dark:text-white" data-final>
                             <?= $finalGrade === null ? '—' : htmlspecialchars($displayGradeValue($finalGrade)) ?></td>
-                        <td class="px-3 py-4 text-center" data-remark>
+                        <td class="whitespace-nowrap px-3 py-4 text-center" data-remark>
                             <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-bold <?= $remark === 'Passed'
     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
     : ($remark === 'Failed'
         ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
         : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400') ?>"><?= $remark !== '' ? htmlspecialchars($remark) : 'Not graded' ?></span>
                         </td>
-                        <td class="px-5 py-4 text-right">
+                        <td class="whitespace-nowrap px-5 py-4 text-right">
                             <button type="submit" name="save_student" value="<?= (int) $student['ID'] ?>"
                                 class="btn btn-primary btn-sm bg-blue-600 hover:bg-blue-700"
                                 title="Save grades for <?= htmlspecialchars($displayName) ?>">Save</button>

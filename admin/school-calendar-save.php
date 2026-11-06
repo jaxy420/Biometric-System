@@ -13,6 +13,19 @@ if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
 $action = (string) ($_POST["action"] ?? "save");
 $date = trim((string) ($_POST["calendar_date"] ?? ""));
 
+if ($action === "save_break") {
+    $startDate = trim((string) ($_POST["start_date"] ?? ""));
+    $endDate = trim((string) ($_POST["end_date"] ?? ""));
+    $label = trim((string) ($_POST["label"] ?? ""));
+    if (setSchoolVacationRange($conn, $startDate, $endDate, $label)) {
+        $_SESSION["toast"] = ["message" => "School break saved from " . $startDate . " through " . $endDate . ". Student attendance is disabled for these dates.", "type" => "success"];
+    } else {
+        $_SESSION["toast"] = ["message" => "Choose a valid school-break range of up to 371 days.", "type" => "error"];
+    }
+    header("Location: school-year-rollover.php?view=schedule");
+    exit();
+}
+
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     $_SESSION["toast"] = ["message" => "Choose a valid date.", "type" => "error"];
     header("Location: school-year-rollover.php?view=schedule");

@@ -12,7 +12,7 @@ ensureStudentPromotionSchema($conn);
 ensureSchoolCalendarSchema($conn);
 
 $activeSchoolYear=(string)$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
-$plan=null; $context=null; $controls=[]; $choices=['outcomes'=>[],'strand_choices'=>[]]; $error='';
+$plan=null; $context=null; $controls=[]; $choices=['outcomes'=>[],'archive_reasons'=>[],'strand_choices'=>[]]; $error='';
 try {
     $context=promotionContext($conn,$activeSchoolYear);
     $controls=promotionDefaultTargets($context['students']);
@@ -25,6 +25,7 @@ try {
         promotionValidatedTargets($_POST['plans']);
         $controls=$_POST['plans'];
         if (is_array($_POST['outcomes'] ?? null)) $choices['outcomes']=$_POST['outcomes'];
+        if (is_array($_POST['archive_reasons'] ?? null)) $choices['archive_reasons']=$_POST['archive_reasons'];
         if (is_array($_POST['strand_choices'] ?? null)) $choices['strand_choices']=$_POST['strand_choices'];
     } elseif (isset($_GET['plans'])) {
         if (!is_array($_GET['plans'])) throw new RuntimeException('Choose valid promotion targets.');
@@ -53,8 +54,14 @@ $calendarRangeEnd = date('Y-m-d', strtotime('+10 months'));
 $calendarEntries = schoolCalendarEntries($conn, $calendarRangeStart, $calendarRangeEnd);
 $calendarToday = date('Y-m-d');
 $calendarTodayInfo = schoolDayInfo($conn, $calendarToday);
-adminHead('School year rollover');
-adminSidebar('rollover','End-of-school-year rollover','Review completed grades, honor qualification and balanced section assignments before confirming.');
+adminHead($scheduleOpen ? 'Schedule & holidays' : 'School year rollover');
+adminSidebar(
+    'rollover',
+    $scheduleOpen ? 'Schedule & holidays' : 'End-of-school-year rollover',
+    $scheduleOpen
+        ? 'Configure attendance dates, holidays, suspensions, and school breaks.'
+        : 'Review completed grades, honor qualification and balanced section assignments before confirming.',
+);
 $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
 ?>
 <style>
@@ -137,6 +144,26 @@ $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
         .section-chevron { transition: none; }
         .section-accordion-panel:not(.hidden) { animation: none; }
     }
+    .schedule-toggle-active {
+        border-color: #2563eb !important;
+        color: #fff !important;
+        background: #2563eb !important;
+        box-shadow: 0 4px 12px rgb(37 99 235 / .28);
+    }
+    .schedule-toggle-active svg { color: #fff !important; }
+    .school-break-trigger {
+        transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease;
+    }
+    .school-break-trigger:hover {
+        transform: translateY(-2px);
+        background: #6d28d9 !important;
+        box-shadow: 0 10px 22px rgb(91 33 182 / .38);
+    }
+    .school-break-trigger:active {
+        transform: translateY(1px) scale(.98);
+        background: #5b21b6 !important;
+        box-shadow: 0 2px 7px rgb(91 33 182 / .32);
+    }
 </style>
 <?php
 
@@ -144,6 +171,7 @@ $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
 // their current Grade -> Section, whether or not a final grade exists.
 $advisoryGroups = [];
 $promoted = []; $honor = []; $regular = []; $retained = []; $remedial = []; $graduated = [];
+$transferred = []; $dropped = []; $kickout = [];
 if ($plan) {
     foreach ($plan['students'] as $id => $record) {
         $student = $record['student']; $standing = $record['standing'];
@@ -173,6 +201,11 @@ if ($plan) {
         unset($roster);
     }
     unset($gradeSections);
+    foreach ($plan['archives'] as $id => $record) {
+        if (($record['reason'] ?? '') === 'Transferred') $transferred[$id] = $record;
+        if (($record['reason'] ?? '') === 'Dropped') $dropped[$id] = $record;
+        if (($record['reason'] ?? '') === 'Kickout') $kickout[$id] = $record;
+    }
 }
 
 // The dedicated advisory mapping is authoritative for rollover display.
@@ -196,18 +229,19 @@ if ($plan) {
 <section class="card card-body w-full flex-1 px-4 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-            <h2 class="text-2xl font-black text-slate-900 dark:text-white">End-of-School-Year Rollover</h2>
+            <h2 id="school-year-page-title" class="text-2xl font-black text-slate-900 dark:text-white"><?= $scheduleOpen ? 'Schedule &amp; Holidays' : 'End-of-School-Year Rollover' ?></h2>
             <div class="mt-2 flex flex-wrap items-center gap-2">
                 <span class="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">Active school year: <?= $escape($activeSchoolYear) ?></span>
-                <p class="text-sm text-slate-500">Review the plan in four steps, then confirm. Nothing is changed until you enter your administrator password and submit Step 4.</p>
+                <p id="school-year-page-copy" class="text-sm text-slate-500"><?= $scheduleOpen ? 'Configure attendance dates, holidays, suspensions, and school breaks.' : 'Review the plan in four steps, then confirm. Nothing is changed until you enter your administrator password and submit Step 4.' ?></p>
             </div>
         </div>
-        <button type="button" id="toggle-schedule-btn" aria-controls="schedule-panel" aria-expanded="<?= $scheduleOpen ? 'true' : 'false' ?>" class="btn btn-secondary inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+        <button type="button" id="toggle-schedule-btn" aria-controls="schedule-panel" aria-expanded="<?= $scheduleOpen ? 'true' : 'false' ?>" class="btn btn-secondary inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800<?= $scheduleOpen ? ' schedule-toggle-active hidden' : '' ?>">
             <svg class="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
             <span>Schedule &amp; Holidays</span>
         </button>
+        <button type="button" id="back-to-school-year" class="btn btn-secondary<?= $scheduleOpen ? '' : ' hidden' ?>">&larr; Back to School Year</button>
     </div>
 
     <section id="schedule-panel" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-900/60" <?= $scheduleOpen ? '' : 'hidden' ?> aria-label="School calendar and holiday schedule">
@@ -216,10 +250,38 @@ if ($plan) {
                 <h3 class="text-xl font-black text-slate-900 dark:text-white">School Calendar &amp; Holiday Schedule</h3>
                 <p class="mt-1 text-sm text-slate-500">Attendance follows this calendar. Unset dates follow the Monday–Friday school-day default; weekends are non-school days.</p>
             </div>
-            <p class="shrink-0 text-sm font-bold text-slate-700 dark:text-slate-200">Today, <?= $escape(date('F j, Y')) ?>:
-                <span class="ml-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><?= $escape(schoolCalendarTypeLabel($calendarTodayInfo['type'])) ?></span>
-            </p>
+            <div class="flex shrink-0 flex-wrap items-center gap-3">
+                <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Today, <?= $escape(date('F j, Y')) ?>:
+                    <span class="ml-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><?= $escape(schoolCalendarTypeLabel($calendarTodayInfo['type'])) ?></span>
+                </p>
+            </div>
         </div>
+
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/60 dark:bg-violet-900/20">
+            <div>
+                <h4 class="font-black text-violet-950 dark:text-violet-100">School's out / Vacation</h4>
+                <p class="mt-1 text-sm text-violet-800 dark:text-violet-200">Set one date or an inclusive break range. Student attendance and scanning are disabled for every saved date.</p>
+            </div>
+            <button type="button" id="toggle-school-break" aria-controls="school-break-form" aria-expanded="false" class="school-break-trigger inline-flex min-h-11 items-center justify-center rounded-xl border border-violet-500 bg-violet-700 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300">+ Configure school break</button>
+        </div>
+
+        <form id="school-break-form" action="school-calendar-save.php" method="post" class="mt-4 hidden rounded-xl border border-violet-200 bg-white p-4 dark:border-violet-900/60 dark:bg-slate-900">
+            <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="action" value="save_break">
+            <div class="grid gap-3 md:grid-cols-4 md:items-end">
+                <label class="text-sm font-bold text-slate-700 dark:text-slate-200">Starts
+                    <input type="date" name="start_date" value="<?= $escape($calendarToday) ?>" required class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                </label>
+                <label class="text-sm font-bold text-slate-700 dark:text-slate-200">Ends
+                    <input type="date" name="end_date" value="<?= $escape($calendarToday) ?>" required class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                </label>
+                <label class="text-sm font-bold text-slate-700 dark:text-slate-200">Label (optional)
+                    <input type="text" name="label" maxlength="120" placeholder="e.g. Christmas break" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                </label>
+                <button class="btn bg-violet-700 text-white hover:bg-violet-800">Save school break</button>
+            </div>
+            <p class="mt-3 text-xs text-slate-500">For one school-out date, use the same start and end date.</p>
+        </form>
 
         <form action="school-calendar-save.php" method="post" class="mt-5 flex flex-wrap items-end gap-3">
             <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
@@ -265,7 +327,7 @@ if ($plan) {
                         $calendarChip = match ($calendarType) {
                             'school', 'special' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
                             'holiday' => 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-                            'suspension' => 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                            'suspension', 'vacation' => 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
                             default => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                         };
                     ?>
@@ -289,6 +351,7 @@ if ($plan) {
             </table>
         </div>
     </section>
+    <div id="rollover-workflow" <?= $scheduleOpen ? 'hidden' : '' ?>>
     <?php if ($error): ?><p class="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-700" role="alert"><?= $escape($error) ?></p><?php endif; ?>
 
     <?php if ($plan): ?>
@@ -425,10 +488,11 @@ if ($plan) {
                         <?php foreach ($students as $studentId => $entry):
                             $student = $entry['student'];
                             $standing = $entry['standing'];
-                            $isGraduate = (int) $student['GRADE'] === 12;
+                            $isGraduate = (int) $student['GRADE'] === 12 && $standing['decision'] !== 'Retained';
                             $isHonor = $standing['average'] !== null && (float) $standing['average'] >= 90.00;
                             $eligibility = $isGraduate ? 'Graduate / Archive'
-                                : ($isHonor ? 'Promoted · Honor Section 1' : 'Promoted · Regular Section');
+                                : ($standing['decision'] === 'Retained' ? 'Retained in current grade'
+                                : ($isHonor ? 'Promoted · Honor Section 1' : 'Promoted · Regular Section'));
                             $displayName = trim(
                                 ($student['LAST_NAME'] ?? '') . ', ' . ($student['FIRST_NAME'] ?? '') .
                                 (!empty($student['MIDDLE_NAME']) ? ', ' . $student['MIDDLE_NAME'] : ''),
@@ -467,7 +531,7 @@ if ($plan) {
     <div id="step-2" class="step-section scroll-mt-24 mt-12 mb-6 rounded-r-2xl border border-l-4 border-l-emerald-600 border-slate-200 bg-emerald-50/50 p-5 dark:border-slate-800 dark:bg-emerald-900/20">
         <h2 class="text-2xl font-black text-emerald-900 dark:text-emerald-100">Step 2 · Student promotion review</h2>
         <p class="text-sm text-slate-500 mb-3">Promoted students are split into an honor section and evenly balanced
-            regular sections. Grade 12 (Academic and Techpro) graduates are archived instead of sectioned.</p>
+            regular sections. Grade 12 learners with failed subjects are retained; eligible completers graduate and are archived.</p>
 
         <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <?php
@@ -478,6 +542,9 @@ if ($plan) {
                 'retained' => ['Retained', count($retained)],
                 'remedial' => ['Remedial', count($remedial)],
                 'graduated' => ['Graduated', count($graduated)],
+                'transferred' => ['Transferred', count($transferred)],
+                'dropped' => ['Dropped', count($dropped)],
+                'kickout' => ['Kickout', count($kickout)],
             ];
             foreach ($step2Cards as $key => $card): ?>
             <div class="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -495,7 +562,7 @@ if ($plan) {
             <?php foreach ($source['targets'] as $targetIndex => $target): ?>
             <input type="hidden" name="plans[<?= $index ?>][targets][<?= $targetIndex ?>][strand]" value="<?= $escape($target['strand']) ?>">
             <?php endforeach; endforeach; ?>
-            <p class="text-sm text-blue-900">Choose Retained only for students who must repeat their current grade. Grade 10 students require an Academic or Techpro destination.</p>
+            <p class="text-sm text-blue-900">For every promoted Grade 10 learner, choose Academic or Techpro before refreshing the preview. Select Transferred, Dropped, or Kickout to archive the learner instead. Passing Grade 12 learners graduate and archive automatically; learners with failed subjects remain in Grade 12.</p>
         </form>
 
         <?php $step2Groups = [
@@ -504,7 +571,10 @@ if ($plan) {
             'regular' => ['Regular Students', 'Balanced evenly across Sections 2 and above.', $regular],
             'retained' => ['Retained', 'Students repeating their current grade by an approved retention decision.', $retained],
             'remedial' => ['Remedial', 'Students advancing with a Summer Class / Remedial obligation.', $remedial],
-            'graduated' => ['Graduated & Archived', 'All Grade 12 Academic and Techpro students; excluded from next year sectioning.', $graduated],
+            'graduated' => ['Graduated & Archived', 'Grade 12 learners with no failed subjects; excluded from next year sectioning.', $graduated],
+            'transferred' => ['Transferred & Archived', 'Students archived with Transferred as their enrollment status and archive reason.', $transferred],
+            'dropped' => ['Dropped & Archived', 'Students archived with Dropped as their enrollment status and archive reason.', $dropped],
+            'kickout' => ['Kicked Out & Archived', 'Students archived with Kickout as their enrollment status and archive reason.', $kickout],
         ]; ?>
         <?php foreach ($step2Groups as $key => $grp): [$title, $blurb, $items] = $grp; ?>
         <div class="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -545,6 +615,7 @@ if ($plan) {
                             <th class="px-3 py-3">Student / LRN</th>
                             <th class="px-3 py-3">Grade / section</th>
                             <th class="px-3 py-3">Overall GWA</th>
+                            <th class="px-3 py-3">Academic record</th>
                             <th class="px-3 py-3">Outcome</th>
                             <th class="px-3 py-3">Grade 11 strand</th>
                             <th class="px-3 py-3">Placement next year</th>
@@ -562,8 +633,30 @@ if ($plan) {
                                     : htmlspecialchars(number_format((float) $st['average'], 2, '.', '')) ?>
                             </td>
                             <td class="px-3 py-3">
+                                <?php if ((int) $s['GRADE'] === 12): ?>
+                                <p class="text-xs font-bold <?= (int) $st['failed'] === 0 ? 'text-emerald-700' : 'text-rose-700' ?>">
+                                    <?= (int) $st['failed'] === 0 ? 'Eligible to graduate' : (int) $st['failed'] . ' failed subject' . ((int) $st['failed'] === 1 ? '' : 's') ?>
+                                </p>
+                                <p class="mt-1 text-xs text-slate-500">Graduation requires passing every recorded subject.</p>
+                                <?php else: ?>
+                                <p class="text-xs text-slate-500"><?= (int) $st['failed'] ?> failed subject<?= (int) $st['failed'] === 1 ? '' : 's' ?></p>
+                                <?php endif; ?>
+                                <a class="mt-1 inline-flex text-xs font-bold text-blue-700 hover:text-blue-900" href="edit-student.php?id=<?= (int) $s['ID'] ?>&tab=academic">Review grades</a>
+                            </td>
+                            <td class="px-3 py-3">
                                 <?php if (!empty($st['teacher_retained'])): ?>
                                 <span class="rounded-full bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-700">Teacher flagged Retained</span>
+                                <?php elseif ((int) $s['GRADE'] === 10 && ($s['ENROLLMENT_STATUS'] ?? '') === 'Enrolled'): ?>
+                                <select form="rollover-choices-form" name="outcomes[<?= $escape($sid) ?>]" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
+                                    <option value="" <?= empty($choices['outcomes'][$sid]) ? 'selected' : '' ?>>Automatic outcome</option>
+                                    <option value="Retained" <?= ($choices['outcomes'][$sid] ?? '') === 'Retained' ? 'selected' : '' ?>>Retained</option>
+                                    <option value="Transferred" <?= ($choices['outcomes'][$sid] ?? '') === 'Transferred' ? 'selected' : '' ?>>Transferred / archive</option>
+                                    <option value="Dropped" <?= ($choices['outcomes'][$sid] ?? '') === 'Dropped' ? 'selected' : '' ?>>Dropped / archive</option>
+                                    <option value="Kickout" <?= ($choices['outcomes'][$sid] ?? '') === 'Kickout' ? 'selected' : '' ?>>Kickout / archive</option>
+                                </select>
+                                <input form="rollover-choices-form" name="archive_reasons[<?= $escape($sid) ?>]" maxlength="230"
+                                    value="<?= $escape($choices['archive_reasons'][$sid] ?? '') ?>" placeholder="Required reason if archiving"
+                                    class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                 <?php elseif (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] < 12): ?>
                                 <select form="rollover-choices-form" name="outcomes[<?= $escape($sid) ?>]" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                     <option value="" <?= empty($choices['outcomes'][$sid]) ? 'selected' : '' ?>>Automatic outcome</option>
@@ -572,15 +665,19 @@ if ($plan) {
                                 <?php else: ?><span class="text-slate-500"><?= $escape($st['decision']) ?></span><?php endif; ?>
                             </td>
                             <td class="px-3 py-3">
-                                <?php if (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] === 10): ?>
+                                <?php if ($key === 'promoted' && (int) $s['GRADE'] === 10): ?>
                                 <select form="rollover-choices-form" name="strand_choices[<?= $escape($sid) ?>]" required class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                     <?php foreach (['Academic','Techpro'] as $strandChoice): ?><option value="<?= $strandChoice ?>" <?= ($choices['strand_choices'][$sid] ?? '') === $strandChoice ? 'selected' : '' ?>><?= $strandChoice ?></option><?php endforeach; ?>
                                 </select>
                                 <?php else: ?><span class="text-slate-500">—</span><?php endif; ?>
                             </td>
                             <td class="px-3 py-3">
-                                <?php if ((int) $s['GRADE'] === 12): ?>
+                                <?php if ((int) $s['GRADE'] === 12 && $st['decision'] !== 'Retained'): ?>
                                 <span class="font-bold text-violet-700">Graduated / Archived</span>
+                                <?php elseif ((int) $s['GRADE'] === 12): ?>
+                                <span class="font-bold text-rose-700">Retained in Grade 12</span>
+                                <?php elseif (in_array($key, ['transferred', 'dropped', 'kickout'], true)): ?>
+                                <span class="font-bold text-rose-700"><?= $escape($record['reason']) ?> / Archived</span>
                                 <?php else: ?>
                                 <?= $record['placement'] ? htmlspecialchars($record['placement']['SECTION'].' '.$record['placement']['STRAND']) : '<span class="text-slate-500">No section change</span>' ?>
                                 <?php endif; ?>
@@ -717,7 +814,7 @@ if ($plan) {
     <div id="step-4" class="step-section scroll-mt-24 mt-12 mb-6 rounded-r-2xl border border-l-4 border-l-rose-600 border-slate-200 bg-rose-50/50 p-5 dark:border-slate-800 dark:bg-rose-900/20">
         <h2 class="text-2xl font-black text-rose-900 dark:text-rose-100">Step 4 · Confirm rollover</h2>
         <p class="text-sm text-slate-500 mb-3">Review the summary below. Confirming promotes students, creates new
-            sections, archives graduates and advances the school year. This action can be undoned from the rollover page.</p>
+            sections, archives eligible Grade 12 graduates and advances the school year. This action can be undoned from the rollover page.</p>
 
         <div class="mt-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <h4 class="font-bold text-slate-900 dark:text-white mb-2">Summary of changes</h4>
@@ -728,6 +825,9 @@ if ($plan) {
                     'honor' => ['Honor Qualified (Section 1)', count($honor)],
                     'regular' => ['Regular Students (Sections 2+)', count($regular)],
                     'graduated' => ['Graduated (Grade 12)', count($graduated)],
+                    'transferred' => ['Transferred / Archived', count($transferred)],
+                    'dropped' => ['Dropped / Archived', count($dropped)],
+                    'kickout' => ['Kicked Out / Archived', count($kickout)],
                 ];
                 foreach ($step4Cards as $key => $card): ?>
                 <div class="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -751,10 +851,14 @@ if ($plan) {
             <?php foreach ($source['targets'] as $targetIndex => $target): ?>
             <input type="hidden" name="plans[<?= $index ?>][targets][<?= $targetIndex ?>][strand]" value="<?= $escape($target['strand']) ?>">
             <?php endforeach; endforeach; ?>
-            <?php foreach ($plan['students'] as $studentId => $record): ?>
-            <?php if (($choices['outcomes'][$studentId] ?? '') === 'Retained'): ?>
-            <input type="hidden" name="outcomes[<?= $escape($studentId) ?>]" value="Retained">
+            <?php foreach ($choices['outcomes'] as $studentId => $selectedOutcome): ?>
+            <?php if (is_string($studentId) && is_string($selectedOutcome) && in_array($selectedOutcome, ['Retained', 'Transferred', 'Dropped', 'Kickout'], true)): ?>
+            <input type="hidden" name="outcomes[<?= $escape($studentId) ?>]" value="<?= $escape($selectedOutcome) ?>">
+            <?php if (in_array($selectedOutcome, ['Transferred', 'Dropped', 'Kickout'], true)): ?>
+            <input type="hidden" name="archive_reasons[<?= $escape($studentId) ?>]" value="<?= $escape($choices['archive_reasons'][$studentId] ?? '') ?>">
             <?php endif; ?>
+            <?php endif; endforeach; ?>
+            <?php foreach ($plan['students'] as $studentId => $record): ?>
             <?php if ((int)$record['student']['GRADE'] === 10): ?>
                 <input type="hidden" name="strand_choices[<?= $escape($studentId) ?>]" value="<?= $escape($choices['strand_choices'][$studentId] ?? '') ?>">
             <?php endif; ?>
@@ -798,32 +902,8 @@ if ($plan) {
         </form>
     </div>
     <?php endif; ?>
+</div>
 </section>
-
-<?php if ($context): ?>
-<section class="card card-body mt-6 w-full flex-1 px-4 sm:px-6 lg:px-8">
-    <h3 class="text-xl font-black text-slate-900 dark:text-white">Advisory section settings</h3>
-    <p class="mt-3 text-sm text-slate-500">Choose the destination Section 1 for each grade and strand. Manage section advisers through Teachers.</p>
-    <details class="card card-body mt-3 w-full">
-        <summary class="cursor-pointer px-6 py-4 text-lg font-bold text-slate-900 dark:text-slate-100">Section 1 designation</summary>
-        <form action="save-promotion-policy.php" method="post" class="mt-6 space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
-            <input type="hidden" name="expected_school_year" value="<?= $escape($activeSchoolYear) ?>">
-            <input type="hidden" name="action" value="honor">
-            <p class="text-sm text-slate-500">One explicitly designated honor section per grade/strand. Junior-high
-                designations: Amethyst, Peace, Aristotle. Senior high has no honor designation unless an administrator chooses one.</p>
-            <label class="block text-sm font-bold">Honor section
-                <select name="honor_section_id" class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-                    <?php foreach ($context['sections'] as $section): if (!(int)$section['IS_ACTIVE']) continue; ?>
-                    <option value="<?= (int)$section['SECTION_ID'] ?>">Grade <?= (int)$section['GRADE'] ?> <?= htmlspecialchars($section['STRAND'].' | '.$section['SECTION']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <button class="btn btn-secondary">Confirm honor designation</button>
-        </form>
-    </details>
-</section>
-<?php endif; ?>
 
 <?php if ($pastRolloverYears && $canUndoRollover): ?>
 <div id="undo-rollover-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
@@ -879,11 +959,32 @@ if ($plan) {
 
     const scheduleToggleButton = document.getElementById('toggle-schedule-btn');
     const schedulePanel = document.getElementById('schedule-panel');
+    const rolloverWorkflow = document.getElementById('rollover-workflow');
+    const backToSchoolYearButton = document.getElementById('back-to-school-year');
+    const schoolYearPageTitle = document.getElementById('school-year-page-title');
+    const schoolYearPageCopy = document.getElementById('school-year-page-copy');
+    const schoolBreakButton = document.getElementById('toggle-school-break');
+    const schoolBreakForm = document.getElementById('school-break-form');
+
+    schoolBreakButton?.addEventListener('click', () => {
+        const opening = schoolBreakForm?.classList.contains('hidden');
+        schoolBreakForm?.classList.toggle('hidden', !opening);
+        schoolBreakButton.setAttribute('aria-expanded', String(opening));
+        if (opening) schoolBreakForm?.querySelector('input[name="start_date"]')?.focus();
+    });
 
     if (scheduleToggleButton && schedulePanel) {
         const setSchedulePanel = (open, updateUrl = true) => {
             schedulePanel.hidden = !open;
             scheduleToggleButton.setAttribute('aria-expanded', String(open));
+            scheduleToggleButton.classList.toggle('schedule-toggle-active', open);
+            scheduleToggleButton.classList.toggle('hidden', open);
+            backToSchoolYearButton?.classList.toggle('hidden', !open);
+            if (rolloverWorkflow) rolloverWorkflow.hidden = open;
+            if (schoolYearPageTitle) schoolYearPageTitle.textContent = open ? 'Schedule & Holidays' : 'End-of-School-Year Rollover';
+            if (schoolYearPageCopy) schoolYearPageCopy.textContent = open
+                ? 'Configure attendance dates, holidays, suspensions, and school breaks.'
+                : 'Review the plan in four steps, then confirm. Nothing is changed until you enter your administrator password and submit Step 4.';
             if (!updateUrl) return;
             const url = new URL(window.location.href);
             if (open) url.searchParams.set('view', 'schedule');
@@ -894,6 +995,7 @@ if ($plan) {
         scheduleToggleButton.addEventListener('click', () => {
             setSchedulePanel(schedulePanel.hidden);
         });
+        backToSchoolYearButton?.addEventListener('click', () => setSchedulePanel(false));
     }
 
     const stickyNav = document.getElementById('sticky-step-nav');

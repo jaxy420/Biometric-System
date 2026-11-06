@@ -79,8 +79,8 @@ function promotionContext(mysqli $conn, string $year, bool $lock = false): array
     $suffix = $lock ? ' FOR UPDATE' : '';
     $setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1'.$suffix)->fetch_assoc();
     if (($setting['ACTIVE_SCHOOL_YEAR'] ?? '') !== $year) throw new RuntimeException('The school year changed. Refresh the preview.');
-    $students = $conn->query("SELECT * FROM students WHERE ENROLLMENT_STATUS='Enrolled' AND IS_ARCHIVED=0 AND GRADE BETWEEN 7 AND 12 ORDER BY STUDENT_ID".$suffix)->fetch_all(MYSQLI_ASSOC);
-    $archiveStudents = $conn->query("SELECT * FROM students WHERE ENROLLMENT_STATUS IN ('Transferred','Dropped') AND COALESCE(IS_ARCHIVED,0)=0 ORDER BY STUDENT_ID".$suffix)->fetch_all(MYSQLI_ASSOC);
+    $students = $conn->query("SELECT * FROM students WHERE ENROLLMENT_STATUS='Enrolled' AND COALESCE(IS_ARCHIVED,0)=0 AND COALESCE(STUDENT_STATUS,'Active')<>'Archived' AND GRADE BETWEEN 7 AND 12 ORDER BY STUDENT_ID".$suffix)->fetch_all(MYSQLI_ASSOC);
+    $archiveStudents = $conn->query("SELECT * FROM students WHERE ENROLLMENT_STATUS IN ('Transferred','Dropped','Kickout') AND COALESCE(IS_ARCHIVED,0)=0 ORDER BY STUDENT_ID".$suffix)->fetch_all(MYSQLI_ASSOC);
     $stmt = $conn->prepare('SELECT * FROM student_subject_results WHERE SCHOOL_YEAR=? ORDER BY STUDENT_ID'.$suffix);
     $stmt->bind_param('s',$year); $stmt->execute(); $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $retentionFlags = studentRetentionFlags($conn, $year);
@@ -135,12 +135,13 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
     foreach ($targets as $target) $targetMap[$target['FROM_GRADE'].'|'.$target['FROM_STRAND']][] = $target;
     foreach ($context['honors'] as $row) $honorIds[$row['GRADE'].'|'.$row['STRAND']] = (int)$row['SECTION_ID'];
     $outcomes = is_array($choices['outcomes'] ?? null) ? $choices['outcomes'] : [];
+    $archiveReasons = is_array($choices['archive_reasons'] ?? null) ? $choices['archive_reasons'] : [];
     $strandChoices = is_array($choices['strand_choices'] ?? null) ? $choices['strand_choices'] : [];
     $requireGrade10Strands = !empty($choices['require_grade10_strands']);
     $retentionFlags = is_array($context['retention_flags'] ?? null) ? $context['retention_flags'] : [];
     $plan = ['year'=>$context['year'],'students'=>[],'archives'=>[],'destinations'=>[],'retained_destinations'=>[],'reviews'=>[],
-        'summary'=>['promoted'=>0,'honor'=>0,'regular'=>0,'retained'=>0,'remedial'=>0,'graduated'=>0,'transferred'=>0,'dropped'=>0,'incomplete'=>0],
-        'targets'=>$targets,'choices'=>['outcomes'=>$outcomes,'strand_choices'=>$strandChoices],
+        'summary'=>['promoted'=>0,'honor'=>0,'regular'=>0,'retained'=>0,'remedial'=>0,'graduated'=>0,'transferred'=>0,'dropped'=>0,'kickout'=>0,'incomplete'=>0],
+        'targets'=>$targets,'choices'=>['outcomes'=>$outcomes,'archive_reasons'=>$archiveReasons,'strand_choices'=>$strandChoices],
         'assignment_diagnostics'=>teacherAssignmentDiagnostics(
             $context['teachers'] ?? [], $context['advisories'] ?? [], $context['subject_assignments'] ?? [],
             $context['sections'] ?? [], $context['students'] ?? [], $context['required'] ?? [],
@@ -166,9 +167,34 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
         if ($student['ENROLLMENT_STATUS'] !== 'Enrolled' || !empty($student['IS_ARCHIVED'])) continue;
         $id = trim($student['STUDENT_ID']); $key = $student['GRADE'].'|'.$student['STRAND'];
         $standing = promotionAcademicStanding($student, $byStudent[$id] ?? []);
+        // Grade 12 completion requires passing the assigned subjects. Unlike
+        // lower grades, a failed Grade 12 subject keeps the learner in Grade
+        // 12 instead of sending them through graduation/archive.
+        if ((int) $student['GRADE'] === 12 && $standing['failed'] > 0) {
+            $standing['decision'] = 'Retained';
+            $standing['grade12_failed'] = true;
+        }
         $override = trim((string) ($outcomes[$id] ?? ''));
-        if ($override !== '' && $override !== 'Retained') {
+        $allowedOutcomes = (int) $student['GRADE'] === 10
+            ? ['', 'Retained', 'Transferred', 'Dropped', 'Kickout']
+            : ['', 'Retained'];
+        if (!in_array($override, $allowedOutcomes, true)) {
             throw new RuntimeException('Invalid promotion outcome for '.$id.'.');
+        }
+        if (in_array($override, ['Transferred', 'Dropped', 'Kickout'], true)) {
+            $archiveReason = trim((string) ($archiveReasons[$id] ?? ''));
+            if ($archiveReason === '' || mb_strlen($archiveReason) > 230) {
+                throw new RuntimeException('Enter an archive reason for '.$id.' before selecting '.$override.'.');
+            }
+            $plan['archives'][$id] = [
+                'student' => $student,
+                'reason' => $override,
+                'archive_reason' => $override . ': ' . $archiveReason,
+                'standing' => ['average' => null, 'decision' => $override],
+                'placement' => null,
+            ];
+            $plan['summary'][strtolower($override)]++;
+            continue;
         }
         $persistedRetention = (int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10
             && !empty($retentionFlags[$id]);
@@ -188,8 +214,9 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
             }
             continue;
         }
-        // Grade 12 is always closed out, regardless of strand or missing rows.
-        // It never enters next year's sectioning pipeline.
+        // Passing Grade 12 learners close out and never enter next year's
+        // sectioning pipeline. Learners with failed subjects were retained
+        // above and stay in their current Grade 12 placement.
         if ((int) $student['GRADE'] === 12) {
             $plan['summary']['graduated']++;
             continue;
@@ -210,8 +237,13 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
     foreach (($context['archive_students'] ?? []) as $student) {
         $id = trim((string) $student['STUDENT_ID']);
         $status = (string) $student['ENROLLMENT_STATUS'];
-        if (!in_array($status, ['Transferred','Dropped'], true)) continue;
-        $plan['archives'][$id] = ['student'=>$student,'reason'=>$status];
+        if (!in_array($status, ['Transferred','Dropped','Kickout'], true)) continue;
+        $plan['archives'][$id] = [
+            'student' => $student,
+            'reason' => $status,
+            'standing' => ['average' => null, 'decision' => $status],
+            'placement' => null,
+        ];
         $plan['summary'][strtolower($status)]++;
     }
 

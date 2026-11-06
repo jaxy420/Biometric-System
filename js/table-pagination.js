@@ -1,4 +1,4 @@
-window.createTablePagination = ({ rows, pager, label = 'records', perPage = 0, total = 0 }) => {
+window.createTablePagination = ({ rows, pager, label = 'records', perPage = 0, total = 0, filterRows = null }) => {
   // Render the bottom pager only; earlier entries are kept for backwards compatibility.
   const pagers = (Array.isArray(pager) ? pager : [pager]).filter(Boolean).slice(-1);
   if (!rows || !pagers.length) return { refresh() {} };
@@ -49,14 +49,19 @@ window.createTablePagination = ({ rows, pager, label = 'records', perPage = 0, t
 
   function render(reset = false) {
     if (reset) currentPage = 1;
-    const records = Array.from(rows.querySelectorAll(':scope > tr')).filter(row => !row.querySelector('[colspan]'));
-    const totalRecords = Number(total) || records.length;
+    const allRecords = Array.from(rows.querySelectorAll(':scope > tr')).filter(row => !row.querySelector('[colspan]'));
+    const records = allRecords.filter(row => typeof filterRows !== 'function' || filterRows(row));
+    const totalRecords = typeof filterRows === 'function' ? records.length : (Number(total) || records.length);
     const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
     currentPage = Math.min(currentPage, totalPages);
     const first = (currentPage - 1) * pageSize;
     const last = Math.min(first + pageSize, totalRecords);
     const visible = new Set(records.slice(first, first + pageSize));
-    records.forEach(row => { row.hidden = !visible.has(row); });
+    allRecords.forEach(row => { row.hidden = !visible.has(row); });
+    records.slice(first, first + pageSize).forEach((row, index) => {
+      const indexCell = row.querySelector('.table-index');
+      if (indexCell) indexCell.textContent = first + index + 1;
+    });
     pagers.forEach((container, index) => {
       container.replaceChildren();
       container.className = 'my-5 flex flex-wrap items-center justify-between gap-3';
@@ -73,5 +78,5 @@ window.createTablePagination = ({ rows, pager, label = 'records', perPage = 0, t
   }
 
   render();
-  return { refresh: render };
+  return { refresh: (reset = false) => render(reset) };
 };

@@ -65,12 +65,9 @@ try {
     if (!$existing) throw new RuntimeException('Student profile was not found.');
     $db_path = $existing['IMAGE_PATH'];
     $prepared = prepareStudentFaceUploads(false, recognitionReferencePath($db_path), studentFaceReferences($conn, (int)$id));
-// 3. Database Update
-if ($enrollmentStatus === 'Archived') {
-    $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ?, ARCHIVE_REASON='Manual archive', ARCHIVED_AT=NOW() WHERE ID = ?");
-} else {
-    $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
-}
+// Archiving is deliberately performed by archive-student.php, not by editing
+// an enrollment-status field.
+$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
 $stmt->bind_param("sssssiisssssi", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
 
     $stmt->execute();

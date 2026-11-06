@@ -80,12 +80,13 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, ar
         foreach ($plan['archives'] as $id => $record) {
             $id = (string) $id; $student = $record['student']; $reason = $record['reason'];
             $before = promotionPlacementState($student); $after = $before;
+            $after['ENROLLMENT_STATUS'] = $reason;
             $after['STUDENT_STATUS'] = 'Archived';
-            $after['ARCHIVE_REASON'] = $reason;
+            $after['ARCHIVE_REASON'] = (string) ($archive['archive_reason'] ?? $reason);
             $after['IS_ARCHIVED'] = '1';
             $after['ARCHIVED_AT'] = date('Y-m-d H:i:s');
             $after['ARCHIVED_BY'] = $administrator;
-            $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$student['ENROLLMENT_STATUS']); $history->execute();
+            $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$reason); $history->execute();
             $decisionValue = $reason;
             $failed = 0;
             $retainedFlag = 0;

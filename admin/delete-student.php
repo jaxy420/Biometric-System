@@ -18,7 +18,7 @@ if(!isset($_POST["id"]) || empty($_POST["id"])){
 $id = (int)$_POST["id"];
 
 // Keep the student profile, image, and attendance history for authorized records requests.
-$stmt = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Archived' WHERE ID = ?");
+$stmt = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Archived', STUDENT_STATUS='Archived', ARCHIVE_REASON='Manual archive', ARCHIVED_AT=NOW() WHERE ID = ? AND COALESCE(STUDENT_STATUS,'Active')<>'Archived'");
 $stmt->bind_param("i", $id);
 
 if($stmt->execute()){

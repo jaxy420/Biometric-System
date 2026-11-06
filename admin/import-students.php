@@ -111,8 +111,8 @@ adminSidebar(
                 </tbody>
             </table>
         </div>
-        <p class="mt-3 text-sm text-slate-500">The optional Status column accepts: Enrolled, Transferred, Dropped, or
-            Archived. Leave it blank to use Enrolled. Grade 12 graduation is handled only by the school-year rollover.</p>
+        <p class="mt-3 text-sm text-slate-500">The optional Status column accepts: Enrolled, Transferred, or
+            Dropped. Leave it blank to use Enrolled. Archiving and Grade 12 graduation are handled by their dedicated actions.</p>
         <a href="student-import-template.csv" download
             class="mt-5 inline-flex rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100">Download
             CSV template</a>

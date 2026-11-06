@@ -1,5 +1,16 @@
 <?php
 session_start();
+if(!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== ($_SESSION['csrf_token'] ?? null)){
+    die("Invalid CSRF token.");
+}
+
+$student_id = trim($_POST['student_id'] ?? '');
+if (!preg_match('/^\d{12}$/', $student_id)) {
+    $_SESSION['toast'] = ['message' => 'Error: LRN must be exactly 12 digits and contain only numbers.', 'type' => 'error'];
+    header('Location: add-student.php');
+    exit;
+}
+
 require "../config/db_conn.php";
 require "page-guard.php";
 require '../includes/student-profile-schema.php';
@@ -11,14 +22,9 @@ ensureStudentProfileColumns($conn);
 ensureSectionCatalogColumns($conn);
 seedDefaultTeacherSections($conn);
 
-if(!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']){
-    die("Invalid CSRF token.");
-}
-
 $submittedText = static function (string $key): string {
     return isset($_POST[$key]) && is_string($_POST[$key]) ? trim($_POST[$key]) : '';
 };
-$student_id = $submittedText('student_id');
 $first_name = $submittedText('first_name');
 $middle_name = $submittedText('middle_name');
 $last_name = $submittedText('last_name');

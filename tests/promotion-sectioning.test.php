@@ -137,6 +137,30 @@ checkPromotion('A promoted Grade 10 student requires an explicit strand choice',
     }
     throw new RuntimeException('A missing Grade 10 strand choice should block the plan.');
 });
+checkPromotion('Grade 10 admin transfer and drop choices archive learners without a strand',function(){
+    $context=fixtureContext([85,85]);
+    foreach ($context['students'] as &$student) $student['GRADE']=10;unset($student);
+    foreach ($context['results'] as &$result) $result['GRADE']=10;unset($result);
+    $context['sections']=[
+        ['SECTION_ID'=>1,'SECTION'=>'Academic One','GRADE'=>11,'STRAND'=>'Academic','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+        ['SECTION_ID'=>2,'SECTION'=>'Techpro One','GRADE'=>11,'STRAND'=>'Techpro','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+    ];
+    $targets=promotionValidatedTargets(promotionDefaultTargets($context['students']));
+    $plan=buildPromotionPlan($context,$targets,['outcomes'=>['LRN0000'=>'Transferred','LRN0001'=>'Dropped'],'require_grade10_strands'=>true]);
+    expectPromotion($plan['summary']['transferred'],1);expectPromotion($plan['summary']['dropped'],1);
+    expectPromotion($plan['archives']['LRN0000']['reason'],'Transferred');expectPromotion($plan['archives']['LRN0001']['reason'],'Dropped');
+    expectPromotion(isset($plan['students']['LRN0000']),false);expectPromotion(isset($plan['students']['LRN0001']),false);
+});
+checkPromotion('Grade 12 learners with failed subjects stay in Grade 12',function(){
+    $context=fixtureContext([70]);
+    $context['students'][0]['GRADE']=12;$context['students'][0]['STRAND']='Academic';
+    $context['results'][0]['GRADE']=12;$context['results'][0]['STRAND']='Academic';
+    $context['sections']=[['SECTION_ID'=>1,'SECTION'=>'Grade 12 Academic','GRADE'=>12,'STRAND'=>'Academic','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1]];
+    $plan=fixturePlan($context);
+    expectPromotion($plan['students']['LRN0000']['standing']['decision'],'Retained');
+    expectPromotion($plan['summary']['retained'],1);expectPromotion($plan['summary']['graduated'],0);
+    expectPromotion($plan['students']['LRN0000']['placement'],null);
+});
 checkPromotion('Transferred and dropped students are queued for archival',function(){
     $context=fixtureContext([85]);
     $context['archive_students']=[

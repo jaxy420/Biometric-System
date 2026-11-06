@@ -8,7 +8,7 @@
     header('Content-Type: application/json');
 
     // 1. Get active student count (archived profiles are excluded)
-    $total = $conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')<>'Archived'")->fetch_assoc()["total"];
+    $total = $conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')='Enrolled' AND COALESCE(STUDENT_STATUS,'Active')<>'Archived'")->fetch_assoc()["total"];
 
     // 2. Get Today's Attendance count (Unique students only)
     $today = date('Y-m-d');

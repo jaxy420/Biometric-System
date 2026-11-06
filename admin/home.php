@@ -10,7 +10,7 @@ $authorizedMobileScanners = authorizedMobileScanners($conn);
 $activeAuthorizedMobileScanners = array_values(array_filter($authorizedMobileScanners, fn($scanner) => (int) ($scanner['IS_ENABLED'] ?? 1) === 1));
 
 $today = date('Y-m-d');
-$totalStudents = (int) ($conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')<>'Archived'")->fetch_assoc()['total'] ?? 0);
+$totalStudents = (int) ($conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')='Enrolled' AND COALESCE(STUDENT_STATUS,'Active')<>'Archived'")->fetch_assoc()['total'] ?? 0);
 
 $timeInStatement = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'");
 $timeInStatement->bind_param('s', $today);
