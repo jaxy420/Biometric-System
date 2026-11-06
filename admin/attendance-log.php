@@ -380,6 +380,13 @@ adminSidebar(
             <button id="close-scan-details" type="button" class="rounded-lg p-2 text-slate-400 hover:text-slate-800"
                 aria-label="Close"><?= icon('x') ?></button>
         </div>
+        <div class="mt-5 flex items-center gap-4 rounded-xl bg-slate-50 p-4">
+            <img id="detail-photo" src="../image/student-preview.png" alt="Registered student photo" class="h-16 w-16 rounded-full border-2 border-white object-cover shadow-sm">
+            <div class="min-w-0">
+                <p id="detail-name-heading" class="truncate font-black text-slate-900"></p>
+                <p id="detail-lrn-heading" class="mt-0.5 text-sm font-semibold text-slate-500"></p>
+            </div>
+        </div>
         <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
             <dt class="font-bold text-slate-500">Student</dt>
             <dd id="detail-name" class="text-slate-900"></dd>
@@ -457,6 +464,11 @@ adminSidebar(
     document.addEventListener('click', event => {
         const button = event.target.closest('[data-scan-details]');
         if (!button) return;
+        const photo = document.getElementById('detail-photo');
+        photo.src = button.dataset.image || '../image/student-preview.png';
+        photo.alt = (button.dataset.name || 'Student') + ' registered photo';
+        document.getElementById('detail-name-heading').textContent = button.dataset.name || 'Student';
+        document.getElementById('detail-lrn-heading').textContent = button.dataset.studentId || 'No LRN';
         document.getElementById('detail-name').textContent = button.dataset.name || '—';
         document.getElementById('detail-lrn').textContent = button.dataset.studentId || '—';
         document.getElementById('detail-placement').textContent =
